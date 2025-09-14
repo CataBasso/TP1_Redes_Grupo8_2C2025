@@ -1,0 +1,12 @@
+# vs code
+.vscode
+
+# intellij
+.idea
+*.iml
+
+# macOS
+.DS_Store
+Thumbs.db
+
+
