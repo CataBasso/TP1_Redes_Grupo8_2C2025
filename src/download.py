@@ -41,7 +41,7 @@ def main():
             print("Exiting client.")
             break
 
-        data = download_socket.recvfrom(1024)
+        data, addr = download_socket.recvfrom(1024)
         print(f"Received from server: {data.decode()}")
 
     download_socket.close()

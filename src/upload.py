@@ -40,7 +40,7 @@ def main():
             print("Exiting client.")
             break
 
-        data = upload_socket.recvfrom(1024)
+        data, addr = upload_socket.recvfrom(1024)
         print(f"Received from server: {data.decode()}")
 
     upload_socket.close()

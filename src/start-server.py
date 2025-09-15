@@ -1,6 +1,7 @@
 import socket
 import sys
 import argparse
+import select
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,15 +29,15 @@ def main():
 
     while True:
         data, addr = server_socket.recvfrom(1024)
-        server_socket.connect(addr)
 
         if not data or data.decode() == "exit":
-            print("Exiting server.")
-            break
+            print(f"Client {addr} disconnected.")
+            continue
         
         print(f"Received message: {data.decode()} from {addr}")
         server_socket.sendto(b"ACK", addr)
 
+    # falta manejar la salida del server por ahora termina con ctrl+c
     server_socket.close()
 
 if __name__ == "__main__":
