@@ -4,7 +4,7 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(
-        description="<comand description>",
+        description="<command description>",
         usage="download [-h] [-v | -q] [-H ADDR] [-p PORT] [-d FILEPATH] [-n FILENAME] [-r protocol]"
     )
     verbosity = parser.add_mutually_exclusive_group()
