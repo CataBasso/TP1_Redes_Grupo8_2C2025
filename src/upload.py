@@ -4,7 +4,8 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(
-        description="<comand description>"
+        description="<comand description>",
+        usage="upload [-h] [-v | -q] [-H ADDR] [-p PORT] [-s FILEPATH] [-n FILENAME] [-r protocol]"
     )
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("-v", "--verbose", action="store_true", help="increase output verbosity")
@@ -18,27 +19,31 @@ def main():
     parser._optionals.title = "optional arguments"
     args = parser.parse_args()
 
+    # esto en realidad seria:
+    # if not args.host or not args.port or not args.src or not args.name:
+    #   print("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
+    #   sys.exit(1)
+    # pero por ahora lo dejamos asi para probar la comunicacion
     if not args.host or not args.port:
         print("Usage: python3 upload.py -H <host> -p <port>")
         sys.exit(1)
 
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    client_socket.connect((args.host, args.port))
+    upload_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    upload_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     print(f"Connected to server at {args.host}:{args.port}")
 
     while True:
         message = input("Enter message to send (or 'exit' to quit): ")
-        client_socket.sendto(message.encode(), (args.host, args.port))
+        upload_socket.sendto(message.encode(), (args.host, args.port))
 
         if message == "exit":
             print("Exiting client.")
             break
 
-        data, addr = client_socket.recvfrom(1024)
+        data = upload_socket.recvfrom(1024)
         print(f"Received from server: {data.decode()}")
 
-    client_socket.close()
+    upload_socket.close()
 
 if __name__ == "__main__":
     main()
