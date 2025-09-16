@@ -19,6 +19,18 @@ def argument_parser():
     parser._optionals.title = "optional arguments"
     return parser.parse_args()
 
+def recieve_selective_repeat(client_socket, addr, filesize, file_path):
+    #lo que tengo que hacer basicamente es 
+    #recibir paquetes, ver si estan en orden,
+    # si el paquete recibido está en orden, envio un ack
+    # si el paquete recibido no está en orden, lo buffereo
+    # cuando buffereo envio el ack del que recibi
+    # en algun momento voy a volver a recibir el paquete perdido, una vez q lo recibi, saco todo del buffer
+    # y envio el ack del paquete recibido
+    pass
+
+
+
 def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
     with open(file_path, "wb") as recieved_file:
         seq_expected = 0
@@ -74,8 +86,8 @@ def handle_upload(addr, args):
 
         if protocol == "stop-and-wait":
             recieve_stop_and_wait(client_socket, addr, filesize, file_path)
-        #elif protocol == "selective-repeat":
-        #    recieve_selective_repeat(client_socket, addr, filesize, file_path)
+        elif protocol == "selective-repeat":
+            recieve_selective_repeat(client_socket, addr, filesize, file_path)
 
         client_socket.sendto(b"UPLOAD_COMPLETE", addr)
         print(f"File {filename} received successfully from {addr}")
