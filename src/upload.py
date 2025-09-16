@@ -53,10 +53,7 @@ def establish_connection(args):
 
     return upload_socket
 
-def main():
-    args = argument_parser()
-    upload_socket = establish_connection(args)
-
+def send_file_info(upload_socket, args):
     if not os.path.isfile(args.src):
         print(f"Source file {args.src} does not exist.")
         upload_socket.close()
@@ -78,8 +75,10 @@ def main():
         print("No response from server after sending file info, exiting.")
         upload_socket.close()
         sys.exit(1)
+    
+    return file_size
 
-    # stop & wait
+def stop_and_wait(args, upload_socket, file_size):
     with open(args.src, "rb") as file:
         seq_num = 0
         bytes_sent = 0
@@ -122,7 +121,21 @@ def main():
             if data.decode() == "UPLOAD_COMPLETE":
                 print(f"File {args.name} uploaded successfully.")
         except socket.timeout:
-            print("No response from server after sending EOF, exiting.")
+            print("No response from server after sending EOF.")
+
+def send_file(upload_socket, args):
+    file_size = send_file_info(upload_socket, args)
+    
+    if args.protocol == "stop-and-wait" or not args.protocol:
+        stop_and_wait(args, upload_socket, file_size)
+    #elif args.protocol == "selective-repeat":
+    #    selective_repeat(args, upload_socket, file_size)
+    
+def main():
+    args = argument_parser()
+    upload_socket = establish_connection(args)
+    send_file(upload_socket, args)
+    upload_socket.close()
 
 if __name__ == "__main__":
     main()
