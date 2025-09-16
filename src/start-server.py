@@ -45,15 +45,15 @@ def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
         if bytes_received >= filesize:
             eof, saddr = client_socket.recvfrom(1024)
 
-def handle_upload(server_socket, addr, args):
+def handle_upload(addr, args):
     print(f"Client {addr} connected for upload.")
-    server_socket.sendto(b"UPLOAD_ACK", addr)
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_socket.bind(('', 0))
     client_port = client_socket.getsockname()[1]
-        
-    server_socket.sendto(f"PORT:{client_port}".encode(), addr)    
+
+    client_socket.sendto(b"UPLOAD_ACK", addr)
+    client_socket.sendto(f"PORT:{client_port}".encode(), addr)    
     client_socket.settimeout(10)
 
     try:
@@ -87,7 +87,7 @@ def handle_upload(server_socket, addr, args):
 
 def handle_client(server_socket, addr, data, args):
     if data.decode() == "UPLOAD_CLIENT":
-        handle_upload(server_socket, addr, args)
+        handle_upload(addr, args)
 
     elif data.decode() == "DOWNLOAD_CLIENT":
         print(f"Client {addr} connected for download.")
