@@ -1,9 +1,10 @@
 import socket
 import sys
 import argparse
-import select
+import threading
+import os
 
-def main():
+def argument_parser():
     parser = argparse.ArgumentParser(
         description="<command description>",
         usage="start -server [-h] [-v | -q] [-H ADDR] [-p PORT] [-s DIRPATH]"
@@ -16,7 +17,18 @@ def main():
     parser.add_argument("-s", "--storage", metavar="", help="storage dir path")
 
     parser._optionals.title = "optional arguments"
-    args = parser.parse_args()
+    return parser.parse_args()
+
+def handle_client(server_socket, addr, data):
+    if not data or data.decode() == "exit":
+        print(f"Client {addr} disconnected.")
+        return
+    
+    print(f"Received message: {data.decode()} from {addr}")
+    server_socket.sendto(b"ACK", addr)
+
+def main():
+    args = argument_parser()
 
     if not args.host or not args.port:
         print("Usage: python3 start-server.py <host> <port>")
@@ -27,18 +39,18 @@ def main():
     server_socket.bind((args.host, args.port))
     print(f"Server listening on {args.host}:{args.port}")
 
-    while True:
-        data, addr = server_socket.recvfrom(1024)
-
-        if not data or data.decode() == "exit":
-            print(f"Client {addr} disconnected.")
-            continue
-        
-        print(f"Received message: {data.decode()} from {addr}")
-        server_socket.sendto(b"ACK", addr)
-
-    # falta manejar la salida del server por ahora termina con ctrl+c
-    server_socket.close()
+    try:
+        while True:
+            data, addr = server_socket.recvfrom(1024)
+            client_thread = threading.Thread(
+                target=handle_client,
+                args=(server_socket, addr, data)
+            )
+            client_thread.start()
+    except KeyboardInterrupt:
+        print("Server shutting down.")
+    finally:
+        server_socket.close()
 
 if __name__ == "__main__":
     main()
