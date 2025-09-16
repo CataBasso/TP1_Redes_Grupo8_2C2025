@@ -33,9 +33,38 @@ def recieve_selective_repeat(client_socket, addr, filesize, file_path):
     # cuando buffereo envio el ack del que recibi
     # en algun momento voy a volver a recibir el paquete perdido, una vez q lo recibi, saco todo del buffer
     # y envio el ack del paquete recibido
-    pass
-
-
+    seq_expected = 0
+    bytes_received = 0
+    buffer = []
+    while bytes_received < filesize: 
+        packet, saddr = client_socket.recvfrom(4096)
+        try:
+            seq_str, chunk = packet.split(b":", 1)
+            seq_received = int(seq_str)
+        except Exception:
+            print(f"Packet format error from {addr}, ignoring.")
+            continue
+        if seq_received == seq_expected:
+            print("rec == expected")
+            bytes_received += len(chunk)
+            print(f"delivered: {seq_expected}")
+            if len(buffer) > 0 :
+                seq_expected += 1
+                #deliver pkts in buffer, basicamente me permite ir hasta el proximo paquete perdido
+                #te envio hasta el proximo paquete que se haya perdido
+                #voy aumentando el expected hasta llegar al elemento del buffer que no este en orden ahi dejo de hacer pop                
+                for i in buffer:
+                    if seq_expected == i[0]:
+                        print(f"delivered: {seq_expected}")
+                        seq_expected += 1 #se supone que en la primera posicion me quedo el ACK del último recibido válido
+                    else: 
+                        print("have in buffer another packet loss")
+            client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+        else:
+            print("rec != expected: queued")
+            buffer.append((seq_received,chunk))
+            client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+            
 
 
 def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
