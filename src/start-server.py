@@ -19,61 +19,66 @@ def argument_parser():
     parser._optionals.title = "optional arguments"
     return parser.parse_args()
 
+def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
+    with open(file_path, "wb") as recieved_file:
+        seq_expected = 0
+        bytes_received = 0
+        while bytes_received < filesize:
+            packet, saddr = client_socket.recvfrom(4096)
+            if packet == b"EOF":
+                break
+            try:
+                seq_str, chunk = packet.split(b":", 1)
+                seq_received = int(seq_str)
+            except Exception:
+                print(f"Packet format error from {addr}, ignoring.")
+                continue
+                    
+            if seq_received == seq_expected:
+                recieved_file.write(chunk)
+                bytes_received += len(chunk)
+                client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+                seq_expected = 1 - seq_expected
+            else:
+                client_socket.sendto(f"ACK:{1 - seq_expected}".encode(), addr)
+
+        if bytes_received >= filesize:
+            eof, saddr = client_socket.recvfrom(1024)
+
+def handle_upload(server_socket, addr, args):
+    print(f"Client {addr} connected for upload.")
+    server_socket.sendto(b"UPLOAD_ACK", addr)
+
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_socket.bind(('', 0))
+    client_port = client_socket.getsockname()[1]
+        
+    server_socket.sendto(f"PORT:{client_port}".encode(), addr)    
+    client_socket.settimeout(10)
+
+    try:
+        file_info, saddr = client_socket.recvfrom(1024)
+        filename, filesize = file_info.decode().split(":")
+        filesize = int(filesize)
+        print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
+        client_socket.sendto(b"FILE_INFO_ACK", addr)
+
+        storage_path = args.storage if args.storage else "storage"
+        os.makedirs(storage_path, exist_ok=True)
+        file_path = os.path.join(storage_path, filename)
+        recieve_stop_and_wait(client_socket, addr, filesize, file_path)
+
+        client_socket.sendto(b"UPLOAD_COMPLETE", addr)
+        print(f"File {filename} received successfully from {addr}")
+
+    except socket.timeout:
+        print(f"Timeout while receiving file from {addr}")
+    finally:
+        client_socket.close()
+
 def handle_client(server_socket, addr, data, args):
     if data.decode() == "UPLOAD_CLIENT":
-        print(f"Client {addr} connected for upload.")
-        server_socket.sendto(b"UPLOAD_ACK", addr)
-
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.bind(('', 0))
-        client_port = client_socket.getsockname()[1]
-        
-        server_socket.sendto(f"PORT:{client_port}".encode(), addr)
-        
-        client_socket.settimeout(10)
-
-        try:
-            file_info, saddr = client_socket.recvfrom(1024)
-            filename, filesize = file_info.decode().split(":")
-            filesize = int(filesize)
-            print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
-            client_socket.sendto(b"FILE_INFO_ACK", addr)
-
-            storage_path = args.storage if args.storage else "storage"
-            os.makedirs(storage_path, exist_ok=True)
-            file_path = os.path.join(storage_path, filename)
-            with open(file_path, "wb") as recieved_file:
-                seq_expected = 0
-                bytes_received = 0
-                while bytes_received < filesize:
-                    packet, saddr = client_socket.recvfrom(4096)
-                    if packet == b"EOF":
-                        break
-                    try:
-                        seq_str, chunk = packet.split(b":", 1)
-                        seq_received = int(seq_str)
-                    except Exception:
-                        print(f"Packet format error from {addr}, ignoring.")
-                        continue
-                    
-                    if seq_received == seq_expected:
-                        recieved_file.write(chunk)
-                        bytes_received += len(chunk)
-                        client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
-                        seq_expected = 1 - seq_expected
-                    else:
-                        client_socket.sendto(f"ACK:{1 - seq_expected}".encode(), addr)
-
-                if bytes_received >= filesize:
-                    eof, saddr = client_socket.recvfrom(1024)
-
-            client_socket.sendto(b"UPLOAD_COMPLETE", addr)
-            print(f"File {filename} received successfully from {addr}")
-
-        except socket.timeout:
-            print(f"Timeout while receiving file from {addr}")
-        finally:
-            client_socket.close()
+        handle_upload(server_socket, addr, args)
 
     elif data.decode() == "DOWNLOAD_CLIENT":
         print(f"Client {addr} connected for download.")
