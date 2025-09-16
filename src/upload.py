@@ -1,8 +1,9 @@
 import socket
 import sys
 import argparse
+import os
 
-def main():
+def argument_parser():
     parser = argparse.ArgumentParser(
         description="<command description>",
         usage="upload [-h] [-v | -q] [-H ADDR] [-p PORT] [-s FILEPATH] [-n FILENAME] [-r protocol]"
@@ -17,33 +18,111 @@ def main():
     parser.add_argument("-r", "--protocol", metavar="", help="error recovery protocol")
 
     parser._optionals.title = "optional arguments"
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # esto en realidad seria:
-    # if not args.host or not args.port or not args.src or not args.name:
-    #   print("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
-    #   sys.exit(1)
-    # pero por ahora lo dejamos asi para probar la comunicacion
-    if not args.host or not args.port:
-        print("Usage: python3 upload.py -H <host> -p <port>")
+def establish_connection(args):
+    if not args.host or not args.port or not args.src or not args.name:
+        print("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
         sys.exit(1)
 
     upload_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     upload_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    upload_socket.settimeout(5)
     print(f"Connected to server at {args.host}:{args.port}")
 
-    while True:
-        message = input("Enter message to send (or 'exit' to quit): ")
-        upload_socket.sendto(message.encode(), (args.host, args.port))
-
-        if message == "exit":
-            print("Exiting client.")
-            break
-
+    upload_socket.sendto(b"UPLOAD_CLIENT", (args.host, args.port))
+    try:
         data, addr = upload_socket.recvfrom(1024)
-        print(f"Received from server: {data.decode()}")
+        if data.decode() != "UPLOAD_ACK":
+            print("Server did not acknowledge upload client.")
+            sys.exit(1)
+        
+        new_port_data, uaddr = upload_socket.recvfrom(1024)
+        if new_port_data.decode().startswith("PORT:"):
+            new_port = int(new_port_data.decode().split(":")[1])
+            print(f"Server assigned port {new_port} for file upload.")
+            args.port = new_port
+        else:
+            print("Did not receive new port from server.")
+            upload_socket.close()
+            sys.exit(1)
+    except socket.timeout:
+        print("No response from server, exiting.")
+        upload_socket.close()
+        sys.exit(1)
 
-    upload_socket.close()
+    return upload_socket
+
+def main():
+    args = argument_parser()
+    upload_socket = establish_connection(args)
+
+    if not os.path.isfile(args.src):
+        print(f"Source file {args.src} does not exist.")
+        upload_socket.close()
+        sys.exit(1)
+    
+    file_size = os.path.getsize(args.src)
+    print(f"Uploading file {args.name} of size {file_size} bytes.")
+
+    file_info = f"{args.name}:{file_size}"
+    upload_socket.sendto(file_info.encode(), (args.host, args.port))
+    
+    try:
+        data, addr = upload_socket.recvfrom(1024)
+        if data.decode() != "FILE_INFO_ACK":
+            print("Server did not acknowledge file info.")
+            upload_socket.close()
+            sys.exit(1)
+    except socket.timeout:
+        print("No response from server after sending file info, exiting.")
+        upload_socket.close()
+        sys.exit(1)
+
+    # stop & wait
+    with open(args.src, "rb") as file:
+        seq_num = 0
+        bytes_sent = 0
+        while bytes_sent < file_size:
+            chunk = file.read(1024)
+            bytes_read = len(chunk)
+
+            packet = f"{seq_num}:".encode() + chunk
+
+            ack_received = False
+            retries = 0
+            max_retries = 5
+
+            while not ack_received and retries < max_retries:
+                upload_socket.sendto(packet, (args.host, args.port))
+                
+                # here, handle verbosity if needed  
+
+                try:
+                    data, addr = upload_socket.recvfrom(1024)
+                    response = data.decode()
+                    if response == f"ACK:{seq_num}":
+                        ack_received = True
+                        bytes_sent += bytes_read
+                        seq_num = 1 - seq_num
+                    else:
+                        print(f"Unexpected ACK: {response}, expected ACK:{seq_num}")
+                except socket.timeout:
+                    retries += 1
+                    print(f"Timeout waiting for ACK, retrying {retries}/{max_retries}")
+
+            if retries >= max_retries:
+                print(f"Max retries reached for sequence number {seq_num}, upload failed.")
+                upload_socket.close()
+                sys.exit(1)
+
+        upload_socket.sendto(b"EOF", (args.host, args.port))
+        try:
+            data, addr = upload_socket.recvfrom(1024)
+            if data.decode() == "UPLOAD_COMPLETE":
+                print(f"File {args.name} uploaded successfully.")
+        except socket.timeout:
+            print("No response from server after sending EOF, exiting.")
 
 if __name__ == "__main__":
     main()
