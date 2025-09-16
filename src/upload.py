@@ -78,7 +78,7 @@ def send_file_info(upload_socket, args):
     
     return file_size
 
-def stop_and_wait(args, upload_socket, file_size):
+def send_stop_and_wait(args, upload_socket, file_size):
     with open(args.src, "rb") as file:
         seq_num = 0
         bytes_sent = 0
@@ -124,10 +124,24 @@ def stop_and_wait(args, upload_socket, file_size):
             print("No response from server after sending EOF.")
 
 def send_file(upload_socket, args):
-    file_size = send_file_info(upload_socket, args)
+    protocol = args.protocol if args.protocol else "stop-and-wait"
+    upload_socket.sendto(protocol.encode(), (args.host, args.port))
     
-    if args.protocol == "stop-and-wait" or not args.protocol:
-        stop_and_wait(args, upload_socket, file_size)
+    try:
+        data, saddr = upload_socket.recvfrom(1024)
+        if data.decode() != "PROTOCOL_ACK":
+            print("Server did not acknowledge protocol choice.")
+            upload_socket.close()
+            sys.exit(1)
+    except socket.timeout:
+        print("No response from server after sending protocol choice, exiting.")
+        upload_socket.close()
+        sys.exit(1)
+
+    file_size = send_file_info(upload_socket, args)
+
+    if protocol == "stop-and-wait":
+        send_stop_and_wait(args, upload_socket, file_size)
     #elif args.protocol == "selective-repeat":
     #    selective_repeat(args, upload_socket, file_size)
     

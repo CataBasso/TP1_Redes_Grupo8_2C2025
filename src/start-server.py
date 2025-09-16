@@ -57,6 +57,11 @@ def handle_upload(server_socket, addr, args):
     client_socket.settimeout(10)
 
     try:
+        protocol_data, _ = client_socket.recvfrom(1024)
+        protocol = protocol_data.decode()
+        print(f"Client using protocol: {protocol}")
+        client_socket.sendto(b"PROTOCOL_ACK", addr)
+
         file_info, saddr = client_socket.recvfrom(1024)
         filename, filesize = file_info.decode().split(":")
         filesize = int(filesize)
@@ -66,7 +71,11 @@ def handle_upload(server_socket, addr, args):
         storage_path = args.storage if args.storage else "storage"
         os.makedirs(storage_path, exist_ok=True)
         file_path = os.path.join(storage_path, filename)
-        recieve_stop_and_wait(client_socket, addr, filesize, file_path)
+
+        if protocol == "stop-and-wait":
+            recieve_stop_and_wait(client_socket, addr, filesize, file_path)
+        #elif protocol == "selective-repeat":
+        #    recieve_selective_repeat(client_socket, addr, filesize, file_path)
 
         client_socket.sendto(b"UPLOAD_COMPLETE", addr)
         print(f"File {filename} received successfully from {addr}")
