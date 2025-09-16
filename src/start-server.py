@@ -4,20 +4,26 @@ import argparse
 import threading
 import os
 
+
 def argument_parser():
     parser = argparse.ArgumentParser(
         description="<command description>",
-        usage="start -server [-h] [-v | -q] [-H ADDR] [-p PORT] [-s DIRPATH]"
+        usage="start -server [-h] [-v | -q] [-H ADDR] [-p PORT] [-s DIRPATH]",
     )
     verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument("-v", "--verbose", action="store_true", help="increase output verbosity")
-    verbosity.add_argument("-q", "--quiet", action="store_true", help="decrease output verbosity")
+    verbosity.add_argument(
+        "-v", "--verbose", action="store_true", help="increase output verbosity"
+    )
+    verbosity.add_argument(
+        "-q", "--quiet", action="store_true", help="decrease output verbosity"
+    )
     parser.add_argument("-H", "--host", metavar="", help="service IP address")
     parser.add_argument("-p", "--port", metavar="", type=int, help="service port")
     parser.add_argument("-s", "--storage", metavar="", help="storage dir path")
 
     parser._optionals.title = "optional arguments"
     return parser.parse_args()
+
 
 def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
     with open(file_path, "wb") as recieved_file:
@@ -33,7 +39,7 @@ def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
             except Exception:
                 print(f"Packet format error from {addr}, ignoring.")
                 continue
-                    
+
             if seq_received == seq_expected:
                 recieved_file.write(chunk)
                 bytes_received += len(chunk)
@@ -45,15 +51,16 @@ def recieve_stop_and_wait(client_socket, addr, filesize, file_path):
         if bytes_received >= filesize:
             eof, saddr = client_socket.recvfrom(1024)
 
+
 def handle_upload(addr, args):
     print(f"Client {addr} connected for upload.")
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client_socket.bind(('', 0))
+    client_socket.bind(("", 0))
     client_port = client_socket.getsockname()[1]
 
     client_socket.sendto(b"UPLOAD_ACK", addr)
-    client_socket.sendto(f"PORT:{client_port}".encode(), addr)    
+    client_socket.sendto(f"PORT:{client_port}".encode(), addr)
     client_socket.settimeout(10)
 
     try:
@@ -74,7 +81,7 @@ def handle_upload(addr, args):
 
         if protocol == "stop-and-wait":
             recieve_stop_and_wait(client_socket, addr, filesize, file_path)
-        #elif protocol == "selective-repeat":
+        # elif protocol == "selective-repeat":
         #    recieve_selective_repeat(client_socket, addr, filesize, file_path)
 
         client_socket.sendto(b"UPLOAD_COMPLETE", addr)
@@ -85,6 +92,7 @@ def handle_upload(addr, args):
     finally:
         client_socket.close()
 
+
 def handle_client(server_socket, addr, data, args):
     if data.decode() == "UPLOAD_CLIENT":
         handle_upload(addr, args)
@@ -94,6 +102,7 @@ def handle_client(server_socket, addr, data, args):
         server_socket.sendto(b"DOWNLOAD_ACK", addr)
         # download logic here
         return
+
 
 def main():
     args = argument_parser()
@@ -112,18 +121,19 @@ def main():
     try:
         while True:
             data, addr = server_socket.recvfrom(1024)
-
             if addr not in client_threads:
                 client_thread = threading.Thread(
-                    target=handle_client,
-                    args=(server_socket, addr, data, args)
-                    )
+                    target=handle_client, args=(server_socket, addr, data, args)
+                )
                 client_thread.start()
                 client_threads[addr] = client_thread
     except KeyboardInterrupt:
         print("Server shutting down.")
     finally:
+        for thread in client_threads.values():
+            thread.join()
         server_socket.close()
+
 
 if __name__ == "__main__":
     main()
