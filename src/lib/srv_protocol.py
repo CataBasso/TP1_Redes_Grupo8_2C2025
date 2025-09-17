@@ -14,7 +14,7 @@ class ServerProtocol:
 
     def recieve_selective_repeat(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
-    ) -> None:
+    ):
         # lo que tengo que hacer basicamente es
         # recibir paquetes, ver si estan en orden,
         # si el paquete recibido está en orden, envio un ack
@@ -56,7 +56,7 @@ class ServerProtocol:
 
     def recieve_stop_and_wait(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
-    ) -> None:
+    ):
         with open(file_path, "wb") as recieved_file:
             seq_expected = 0
             bytes_received = 0
@@ -121,7 +121,7 @@ class ServerProtocol:
             print(f"Error: File not found at {file_path}")
             return
     
-    def handle_upload(self, addr) -> None:
+    def handle_upload(self, addr):
         print(f"Client {addr} connected for upload.")
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -138,12 +138,14 @@ class ServerProtocol:
             print(f"Client using protocol: {protocol}")
             client_socket.sendto(b"PROTOCOL_ACK", addr)
 
+            # TODO: Preguntarle a Cata que onda con "saddr"
             file_info, saddr = client_socket.recvfrom(BUFFER)
             filename, filesize = file_info.decode().split(":")
             filesize = int(filesize)
             print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
             client_socket.sendto(b"FILE_INFO_ACK", addr)
 
+            # C = A si A, caso contrario B
             storage_path = self.args.storage if self.args.storage else "storage"
             os.makedirs(storage_path, exist_ok=True)
             file_path = os.path.join(storage_path, filename)
@@ -155,6 +157,8 @@ class ServerProtocol:
 
             client_socket.sendto(b"UPLOAD_COMPLETE", addr)
             print(f"File {filename} received successfully from {addr}")
+
+            # Se podria cortar la conexion una vez terminado todo y no esperar por el timeout
 
         except socket.timeout:
             print(f"Timeout while receiving file from {addr}")
