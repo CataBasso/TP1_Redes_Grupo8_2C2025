@@ -48,7 +48,7 @@ def main():
     print(f"Server listening on {args.host}:{args.port}")
 
     threads = {}
-    protocol = ServerProtocol(skt, args)
+    protocol = ServerProtocol(args)
 
     try:
         while True:

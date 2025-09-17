@@ -8,42 +8,56 @@ BUFFER_SW = 4096
 
 
 class ServerProtocol:
-    def __init__(self, server_socket: socket.socket, args):
-        # podemos evitar el server_socket
-        #self.server_socket = server_socket 
+    def __init__(self, args):
         self.args = args
 
     def recieve_selective_repeat(
-        self, client_socket: socket.socket, addr, filesize: int, file_path: str
-    ):
+    self, client_socket: socket.socket, addr, filesize: int, file_path: str
+):
         seq_expected = 0
         bytes_received = 0
         buffer = []
+
         with open(file_path, "wb") as recieved_file:
             while bytes_received < filesize:
                 packet, saddr = client_socket.recvfrom(BUFFER_SR)
+                    
                 try:
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
                 except Exception:
                     print(f"Packet format error from {addr}, ignoring.")
                     continue
+                    
                 if seq_received == seq_expected:
                     recieved_file.write(chunk)
                     bytes_received += len(chunk)
-                    if len(buffer) > 0:
-                        seq_expected += 1
-                        for i in buffer:
-                            if seq_expected == i[0]:
-                                recieved_file.write(chunk)
-                                seq_expected += 1  # se supone que en la primera posicion me quedo el ACK del último recibido válido
+                    seq_expected += 1
+
+                    if buffer:
+                        buffer.sort(key=lambda x: x[0])
+                        
+                        i = 0
+                        while i < len(buffer):
+                            if buffer[i][0] == seq_expected:
+                                buffer_chunk = buffer[i][1]
+                                recieved_file.write(buffer_chunk)
+                                bytes_received += len(buffer_chunk)
+                                seq_expected += 1
+                                buffer.pop(i)
                             else:
-                                print("have in buffer another packet loss")
+                                i += 1
+                    
                     client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
                 else:
-                    print("rec != expected: queued")
+                    print(f"Received packet {seq_received}, expected {seq_expected} - queuing")
                     buffer.append((seq_received, chunk))
                     client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+        
+        while True:
+            packet, addr = client_socket.recvfrom(BUFFER)
+            if packet == b"EOF":
+                break
 
     def recieve_stop_and_wait(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
@@ -137,8 +151,7 @@ class ServerProtocol:
             print(f"Client using protocol: {protocol}")
             client_socket.sendto(b"PROTOCOL_ACK", addr)
 
-            # TODO: Preguntarle a Cata que onda con "saddr"
-            file_info, saddr = client_socket.recvfrom(BUFFER)
+            file_info, addr = client_socket.recvfrom(BUFFER)
             filename, filesize = file_info.decode().split(":")
             filesize = int(filesize)
             print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
@@ -169,7 +182,7 @@ class ServerProtocol:
 
         # socket temporal del cliente
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.bind(("", 0)) # puerto aleatorio
+        client_socket.bind(("", 0))
         client_port = client_socket.getsockname()[1]
         client_socket.settimeout(TIMEOUT)
 

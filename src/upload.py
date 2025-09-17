@@ -17,66 +17,78 @@ def selective_repeat(args, upload_socket, file_size):
         with open(args.src, "rb") as file:
             window_size = 4 #cant_pkt_env / 2 -> #cant_pkt_env = file_size / channel_size
             base_num = 0
-            top_num = window_size
-            seq_num = -1
+            next_seq_num = 0
             bytes_sent = 0 
-            pkts = []
-            timers = {}  # Nuevo: para controlar el tiempo por paquete
-            timeout = 0.5           
+            pkts = {}  # Diccionario: {seq_num: (packet, sent_time)}
+            timeout = 1.0
+            
             while bytes_sent < file_size:
-                while seq_num <= window_size:
+                while next_seq_num < base_num + window_size and bytes_sent < file_size:
                     chunk = file.read(1024)
+                    if not chunk:
+                        break
+                        
                     bytes_read = len(chunk)
-                    packet = f"{seq_num+1}:".encode() + chunk
-                    #start pkt timer
-                    pkts.append(packet)                    
-                    upload_socket.sendto(packet,(args.host, args.port)) 
-                    seq_num += 1
-                    timers[seq_num] = time.time()
+                    packet = f"{next_seq_num}:".encode() + chunk
+                    
+                    # Guardar paquete y timestamp
+                    pkts[next_seq_num] = (packet, time.time())
+                    
+                    # Enviar paquete
+                    upload_socket.sendto(packet, (args.host, args.port))     
+                    next_seq_num += 1
                     bytes_sent += bytes_read
                 
                 current_time = time.time()
-                for s_num, sent_time in list(timers.items()):
+                for seq_num, (packet, sent_time) in list(pkts.items()):
                     if current_time - sent_time > timeout:
-                        # Reenviar el paquete
-                        for pkt_seq, pkt in pkts:
-                            if pkt_seq == s_num:
-                                print(f"Timeout, reenviando paquete {s_num}")
-                                upload_socket.sendto(pkt, (args.host, args.port))
-                                timers[s_num] = time.time()  # Reiniciar timer
-                                break
+                        print(f"Timeout, reenviando paquete {seq_num}")
+                        upload_socket.sendto(packet, (args.host, args.port))
+                        pkts[seq_num] = (packet, current_time)  # Actualizar timestamp
+                
+                upload_socket.settimeout(0.1)
+                
+                try:
+                    data, addr = upload_socket.recvfrom(1024)
+                    response = data.decode()
+                    
+                    if response.startswith("ACK:"):
+                        ack_seq = int(response.split(":")[1])
 
+                        if ack_seq in pkts:
+                            del pkts[ack_seq]
+                            
+                            if ack_seq == base_num:
+                                while base_num not in pkts and base_num < next_seq_num:
+                                    base_num += 1
+                                    
+                except socket.timeout:
+                    pass
+                
+                # Si todos los paquetes fueron confirmados y hemos enviado todo el archivo
+                if not pkts and bytes_sent >= file_size:
+                    break
+            
+            upload_socket.settimeout(0.5)
+            try:
+                while True:
+                    data, addr = upload_socket.recvfrom(1024)
+            except socket.timeout:
+                pass
 
-                data, addr = upload_socket.recvfrom(1024)
-                response = data.decode()
-                (common, seq_read) = response.split(":")
-                if common in "ACK":
-                    if base_num == int(seq_read):                         
-                        pkts.pop(0)
-                        if len(pkts) > 0:
-                            seq_num -= 1 
-                            base_num += 1
-                            top_num += 1
-                        else:
-                            seq_num = -1
-                            base_num = base_num + window_size
-                            top_num = top_num + window_size                        
-                    elif seq_read > base_num and seq_read < top_num:
-                        for pkt in pkts:
-                            if seq_read in pkt:
-                               pkts.remove(pkt) 
-                            break
-                        timers.pop(seq_read, None) 
-                                                        
+            upload_socket.settimeout(5)
             upload_socket.sendto(b"EOF", (args.host, args.port))
             try:
                 data, addr = upload_socket.recvfrom(1024)
                 if data.decode() == "UPLOAD_COMPLETE":
                     print(f"File {args.name} uploaded successfully.")
+                else:
+                    print(f"Unexpected response after EOF: {data.decode()}")
             except socket.timeout:
                 print("No response from server after sending EOF.")
-    except Exception:
-        print(f"Exception TYPE: ???; FILE NOT FOUND ETC")
+                
+    except Exception as e:
+        print(f"Error during transfer: {str(e)}")
 
 
 def argument_parser():
