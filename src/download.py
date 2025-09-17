@@ -2,7 +2,7 @@ import socket
 import sys
 import argparse
 
-def main():
+def argument_parser():
     parser = argparse.ArgumentParser(
         description="<command description>",
         usage="download [-h] [-v | -q] [-H ADDR] [-p PORT] [-d FILEPATH] [-n FILENAME] [-r protocol]"
@@ -17,33 +17,111 @@ def main():
     parser.add_argument("-r", "--protocol", metavar="", help="error recovery protocol")
 
     parser._optionals.title = "optional arguments"
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # esto en realidad seria:
-    # if not args.host or not args.port or not args.dst or not args.name:
-    #   print("Usage: python3 download.py -H <host> -p <port> -d <destination> -n <name>")
-    #   sys.exit(1)
-    # pero por ahora lo dejamos asi para probar la comunicacion
-    # habria que decidir si, si o si tenes que ponerle un destination path o si hay un path por defecto onda '/descargas'
-    if not args.host or not args.port:
-        print("Usage: python3 download.py -H <host> -p <port>")
+def establish_connection(args):
+    download_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # IPv4 y UDP
+    download_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    download_socket.settimeout(5)
+    
+    print(f"Contacting server at {args.host}:{args.port}")
+    download_socket.sendto(b"DOWNLOAD_CLIENT", (args.host, args.port))
+    
+    try:
+        data, _ = download_socket.recvfrom(1024)
+        if data.decode() != "DOWNLOAD_ACK":
+            print("Server did not acknowledge download request.")
+            sys.exit(1)
+            
+        port_data, _ = download_socket.recvfrom(1024)
+        if port_data.decode().startswith("PORT:"):
+            new_port = int(port_data.decode().split(":")[1])
+            print(f"Server assigned new port {new_port} for the download.")
+            args.port = new_port
+        else:
+            print("Did not receive a valid new port from server.")
+            sys.exit(1)
+            
+    except socket.timeout:
+        print("No response from server. Exiting.")
+        sys.exit(1)
+        
+    return download_socket
+
+def request_file_info(download_socket, args):
+    print(f"Requesting file '{args.name}' from server.")
+    download_socket.sendto(args.name.encode(), (args.host, args.port))
+    
+    try:
+        file_info, _ = download_socket.recvfrom(1024)
+        info_str = file_info.decode()
+        if info_str.startswith("FILESIZE:"):
+            filesize = int(info_str.split(":")[1])
+            print(f"Server confirmed file exists. Size: {filesize} bytes.")
+            download_socket.sendto(b"FILE_INFO_ACK", (args.host, args.port))
+            return filesize
+        elif info_str == "ERROR:FileNotFound":
+            print("Server responded: File not found.")
+            sys.exit(1)
+        else:
+            print(f"Unexpected response from server: {info_str}")
+            sys.exit(1)
+    except socket.timeout:
+        print("No response from server after requesting file info, exiting.")
         sys.exit(1)
 
-    download_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    download_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    print(f"Connected to server at {args.host}:{args.port}")
+def receive_stop_and_wait(args, download_socket, filesize):
+    with open(args.dst, "wb") as file:
+        seq_expected = 0
+        bytes_received = 0
+        while bytes_received < filesize:
+            try:
+                packet, _ = download_socket.recvfrom(4096)
+                seq_str, chunk = packet.split(b":", 1)
+                seq_received = int(seq_str)
+                if seq_received == seq_expected:
+                    file.write(chunk)
+                    bytes_received += len(chunk)
+                    download_socket.sendto(f"ACK:{seq_received}".encode(), (args.host, args.port))
+                    
+                    seq_expected = 1 - seq_expected
+                else:
+                    ack_duplicado = 1 - seq_expected
+                    print(f"Received duplicate packet {seq_received}, expected {seq_expected}. Resending ACK:{ack_duplicado}")
+                    download_socket.sendto(f"ACK:{ack_duplicado}".encode(), (args.host, args.port))
+                    
+            except socket.timeout:
+                print("Timeout waiting for packet. The server might have stopped.")
+                break
+            except ValueError:
+                print("Received a malformed packet. Ignoring.")
 
-    while True:
-        message = input("Enter message to send (or 'exit' to quit): ")
-        download_socket.sendto(message.encode(), (args.host, args.port))
+    print(f"\nFile '{args.name}' downloaded successfully to '{args.dst}'.")
 
-        if message == "exit":
-            print("Exiting client.")
-            break
+def request_file(download_socket, args):
+    protocol = args.protocol if args.protocol else "stop-and-wait"
+    download_socket.sendto(protocol.encode(), (args.host, args.port))
+    
+    try:
+        ack_data, _ = download_socket.recvfrom(1024)
+        if ack_data.decode() != "PROTOCOL_ACK":
+            print("Server did not acknowledge protocol choice.")
+            sys.exit(1)
+    except socket.timeout:
+        print("No response from server after sending protocol choice. Exiting.")
+        sys.exit(1)
 
-        data, addr = download_socket.recvfrom(1024)
-        print(f"Received from server: {data.decode()}")
+    filesize = request_file_info(download_socket, args)
+    
+    if protocol == "stop-and-wait":
+        receive_stop_and_wait(args, download_socket, filesize)
+    # elif protocol == "selective-repeat":
+    #     receive_selective_repeat(args, download_socket, filesize)
 
+def main():
+    args = argument_parser()
+    download_socket = establish_connection(args)
+    request_file(download_socket, args)
     download_socket.close()
 
 if __name__ == "__main__":
