@@ -1,6 +1,7 @@
 import socket
 import os
 import time
+from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
 TIMEOUT = 5
 BUFFER = 1024
@@ -72,57 +73,6 @@ class UploadProtocol:
         
         return file_size
 
-    def send_stop_and_wait(self, file_size):
-        with open(self.args.src, "rb") as file:
-            seq_num = 0
-            bytes_sent = 0
-            while bytes_sent < file_size:
-                chunk = file.read(BUFFER)
-                bytes_read = len(chunk)
-
-                packet = f"{seq_num}:".encode() + chunk
-
-                ack_received = False
-                retries = 0
-                max_retries = 5
-
-                while not ack_received and retries < max_retries:
-                    self.socket.sendto(packet, (self.args.host, self.args.port))
-                    
-                    if self.args.verbose:
-                        print(f"Sent packet {seq_num}, {bytes_read} bytes")
-
-                    try:
-                        data, addr = self.socket.recvfrom(BUFFER)
-                        response = data.decode()
-                        if response == f"ACK:{seq_num}":
-                            ack_received = True
-                            bytes_sent += bytes_read
-                            seq_num = 1 - seq_num
-                            
-                        else:
-                            print(f"Unexpected ACK: {response}, expected ACK:{seq_num}")
-                    except socket.timeout:
-                        retries += 1
-                        print(f"Timeout waiting for ACK, retrying {retries}/{max_retries}")
-
-                if retries >= max_retries:
-                    print(f"Max retries reached for sequence number {seq_num}, upload failed.")
-                    return False
-
-            self.socket.sendto(b"EOF", (self.args.host, self.args.port))
-            try:
-                data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() == "UPLOAD_COMPLETE":
-                    print(f"File {self.args.name} uploaded successfully.")
-                    return True
-                else:
-                    print(f"Unexpected response after EOF: {data.decode()}")
-                    return False
-            except socket.timeout:
-                print("No response from server after sending EOF.")
-                return False
-
     def send_selective_repeat(self, file_size):
         try:
             with open(self.args.src, "rb") as file:
@@ -135,7 +85,7 @@ class UploadProtocol:
                 
                 while bytes_sent < file_size:
                     while next_seq_num < base_num + window_size and bytes_sent < file_size:
-                        chunk = file.read(1024)
+                        chunk = file.read(BUFFER)
                         if not chunk:
                             break
                             
@@ -218,6 +168,7 @@ class UploadProtocol:
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if protocol == "stop-and-wait":
-            return self.send_stop_and_wait(file_size)
+            stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
+            return stop_and_wait.send_stop_and_wait(file_size)
         elif protocol == "selective-repeat":
             return self.send_selective_repeat(file_size)

@@ -1,5 +1,6 @@
 import os
 import socket
+from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
 TIMEOUT = 10
 BUFFER = 1024
@@ -58,35 +59,6 @@ class ServerProtocol:
             packet, addr = client_socket.recvfrom(BUFFER)
             if packet == b"EOF":
                 break
-
-    def recieve_stop_and_wait(
-        self, client_socket: socket.socket, addr, filesize: int, file_path: str
-    ):
-
-        with open(file_path, "wb") as recieved_file:
-            seq_expected = 0
-            bytes_received = 0
-            while bytes_received < filesize:
-                packet, saddr = client_socket.recvfrom(BUFFER_SW)
-                if packet == b"EOF":
-                    break
-                try:
-                    seq_str, chunk = packet.split(b":", 1)
-                    seq_received = int(seq_str)
-                except Exception:
-                    print(f"Packet format error from {addr}, ignoring.")
-                    continue
-
-                if seq_received == seq_expected:
-                    recieved_file.write(chunk)
-                    bytes_received += len(chunk)
-                    client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
-                    seq_expected = 1 - seq_expected
-                else:
-                    client_socket.sendto(f"ACK:{1 - seq_expected}".encode(), addr)
-
-            if bytes_received >= filesize:
-                eof, saddr = client_socket.recvfrom(BUFFER)
                 
     def send_stop_and_wait(self, client_socket, addr, file_path):
         try:
@@ -163,7 +135,8 @@ class ServerProtocol:
             file_path = os.path.join(storage_path, filename)
 
             if protocol == "stop-and-wait":
-                self.recieve_stop_and_wait(client_socket, addr, filesize, file_path)
+                stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
+                stop_and_wait.recieve_stop_and_wait(client_socket, addr, filesize, file_path)
             elif protocol == "selective-repeat":
                 self.recieve_selective_repeat(client_socket, addr, filesize, file_path)
 
