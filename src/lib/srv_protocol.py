@@ -62,7 +62,28 @@ class ServerProtocol:
     def recieve_stop_and_wait(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
     ):
+        """
+            Recibe un archivo usando el protocolo Stop-and-Wait.
+            Args:
+            client_socket (socket.socket): El socket UDP para la comunicación.
+            addr: La dirección del cliente.
+            filesize (int): El tamaño del archivo a recibir.
+            file_path (str): La ruta donde se guardará el archivo recibido.
+            Explicacion paso a paso:
+            1. Abre el archivo en modo escritura binaria.
+            2. Inicializa el número de secuencia esperado y los bytes recibidos.
+            3. Inicia un bucle que continúa hasta que se hayan recibido todos los bytes
 
+            del archivo.
+            4. Dentro del bucle, recibe un paquete del cliente.
+            5. Extrae el número de secuencia y el contenido del paquete.
+            6. Si el número de secuencia es el esperado:
+            - Escribe el contenido en el archivo.
+            - Incrementa el número de secuencia esperado y los bytes recibidos.
+            - Envía un ACK al cliente.
+            7. Si el número de secuencia no es el esperado:
+            - Ignora el paquete y reenvía el ACK del último paquete correcto.
+        """
         with open(file_path, "wb") as recieved_file:
             seq_expected = 0
             bytes_received = 0
@@ -87,6 +108,59 @@ class ServerProtocol:
 
             if bytes_received >= filesize:
                 eof, saddr = client_socket.recvfrom(BUFFER)
+
+    def send_selective_repeat(self, client_socket, addr, file_path):
+        try:
+
+            client_socket.settimeout(TIMEOUT)
+
+            filesize = os.path.getsize(file_path)
+            success = True
+
+            with open(file_path, "rb") as file:
+                base = 0
+                next_seq_num = 0
+                window_size = 4
+                buffer = {}
+                bytes_sent = 0
+
+                while bytes_sent < filesize or buffer:
+                    while next_seq_num < base + window_size and bytes_sent < filesize:
+                        chunk = file.read(1024)
+                        if not chunk:
+                            break
+                        
+                        packet = f"{next_seq_num}:".encode() + chunk
+                        client_socket.sendto(packet, addr)
+                        buffer[next_seq_num] = chunk
+                        next_seq_num += 1
+                        bytes_sent += len(chunk)
+
+                    try:
+                        data, _ = client_socket.recvfrom(1024)
+                        response = data.decode()
+                        if response.startswith("ACK:"):
+                            ack_num = int(response.split(":")[1])
+                            if ack_num in buffer:
+                                del buffer[ack_num]
+                                if ack_num == base:
+                                    while base not in buffer and base < next_seq_num:
+                                        base += 1
+                    except socket.timeout:
+                        print("Timeout waiting for ACKs, resending unacknowledged packets...")
+                        for seq in range(base, next_seq_num):
+                            if seq in buffer:
+                                packet = f"{seq}:".encode() + buffer[seq]
+                                client_socket.sendto(packet, addr)
+
+                client_socket.sendto(b"EOF", addr)
+
+            return success
+
+        except FileNotFoundError:
+            print(f"Error: File not found at {file_path}")
+            success = False
+            return success
                 
     def send_stop_and_wait(self, client_socket, addr, file_path):
         try:
@@ -217,8 +291,8 @@ class ServerProtocol:
 
             if protocol == "stop-and-wait":
                 success = self.send_stop_and_wait(client_socket, addr, file_path)
-            # elif protocol == "selective-repeat":
-            #     success = self.send_selective_repeat(client_socket, addr, file_path)
+            elif protocol == "selective-repeat":
+                success = self.send_selective_repeat(client_socket, addr, file_path)
 
             if success:
                 print(f"File '{filename}' sent successfully to {addr}.")
