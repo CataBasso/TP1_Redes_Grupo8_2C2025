@@ -9,7 +9,7 @@ BUFFER_SW = 4096
 
 class ServerProtocol:
     def __init__(self, server_socket: socket.socket, args):
-        self.server_socket = server_socket
+        #self.server_socket = server_socket
         self.args = args
 
     def recieve_selective_repeat(
@@ -81,7 +81,46 @@ class ServerProtocol:
 
             if bytes_received >= filesize:
                 eof, saddr = client_socket.recvfrom(BUFFER)
+                
+    def send_stop_and_wait(self, client_socket, addr, file_path):
+        try:
+            filesize = os.path.getsize(file_path)
+            with open(file_path, "rb") as file:
+                seq_num = 0
+                bytes_sent = 0
+                while bytes_sent < filesize:
+                    chunk = file.read(1024)
+                    if not chunk:
+                        break
+                    
+                    packet = f"{seq_num}:".encode() + chunk
+                    ack_received = False
+                    retries = 0
+                    max_retries = 5
 
+                    while not ack_received and retries < max_retries:
+                        client_socket.sendto(packet, addr)
+                        try:
+                            data, _ = client_socket.recvfrom(1024)
+                            response = data.decode()
+                            if response == f"ACK:{seq_num}":
+                                ack_received = True
+                                bytes_sent += len(chunk)
+                                seq_num = 1 - seq_num
+                            else:
+                                print(f"Received unexpected ACK: {response}, expecting ACK:{seq_num}")
+                        except socket.timeout:
+                            retries += 1
+                            print(f"Timeout waiting for ACK:{seq_num}, retrying {retries}/{max_retries}...")
+                    
+                    if not ack_received:
+                        print("Transfer failed: Max retries reached.")
+                        return
+
+        except FileNotFoundError:
+            print(f"Error: File not found at {file_path}")
+            return
+    
     def handle_upload(self, addr) -> None:
         print(f"Client {addr} connected for upload.")
 
@@ -122,11 +161,55 @@ class ServerProtocol:
         finally:
             client_socket.close()
 
-    def handle_download(self, addr) -> None:
+    def handle_download(self, addr):
         print(f"Client {addr} connected for download.")
-        self.server_socket.sendto(b"DOWNLOAD_ACK", addr)
-        # TODO: implement download logic
-        return
+
+        # socket temporal del cliente
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_socket.bind(("", 0)) # puerto aleatorio
+        client_port = client_socket.getsockname()[1]
+        client_socket.settimeout(TIMEOUT)
+
+        try:
+            # envio ack y nro de puerto
+            client_socket.sendto(b"DOWNLOAD_ACK", addr)
+            client_socket.sendto(f"PORT:{client_port}".encode(), addr)
+
+            # recibo protocolo, y envío ack
+            protocol_data, _ = client_socket.recvfrom(BUFFER)
+            protocol = protocol_data.decode()
+            client_socket.sendto(b"PROTOCOL_ACK", addr)
+
+            # recibo nombre del archivo
+            filename_data, _ = client_socket.recvfrom(BUFFER)
+            filename = filename_data.decode()
+            
+            # constituyo la ruta del archivo
+            storage_path = self.args.storage if self.args.storage else "storage"
+            file_path = os.path.join(storage_path, filename)
+
+            # chequeo existencia, envío info al y espero ack para enviar archivo
+            if os.path.isfile(file_path):
+                filesize = os.path.getsize(file_path)
+                client_socket.sendto(f"FILESIZE:{filesize}".encode(), addr)
+                ack_info, _ = client_socket.recvfrom(BUFFER)
+                if ack_info.decode() != "FILE_INFO_ACK":
+                    return
+            else:
+                client_socket.sendto(b"ERROR:FileNotFound", addr)
+                return
+
+            if protocol == "stop-and-wait":
+                self.send_stop_and_wait(client_socket, addr, file_path)
+            # elif protocol == "selective-repeat":
+            #     self.send_selective_repeat(client_socket, addr, file_path)
+            
+            print(f"File '{filename}' sent successfully to {addr}.")
+
+        except socket.timeout: # si hay timeout
+            print(f"Timeout during negotiation with client {addr}.")
+        finally: # en ambos casos, cierro el socket temporal
+            client_socket.close()
 
     def handle_client(self, addr, data) -> None:
         message = data.decode()
