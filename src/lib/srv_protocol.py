@@ -9,7 +9,8 @@ BUFFER_SW = 4096
 
 class ServerProtocol:
     def __init__(self, server_socket: socket.socket, args):
-        #self.server_socket = server_socket
+        # podemos evitar el server_socket
+        #self.server_socket = server_socket 
         self.args = args
 
     def recieve_selective_repeat(
