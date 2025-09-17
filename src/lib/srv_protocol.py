@@ -58,6 +58,7 @@ class ServerProtocol:
     def recieve_stop_and_wait(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
     ):
+
         with open(file_path, "wb") as recieved_file:
             seq_expected = 0
             bytes_received = 0
@@ -85,7 +86,12 @@ class ServerProtocol:
                 
     def send_stop_and_wait(self, client_socket, addr, file_path):
         try:
+
+            client_socket.settimeout(TIMEOUT)
+
             filesize = os.path.getsize(file_path)
+            success = True
+
             with open(file_path, "rb") as file:
                 seq_num = 0
                 bytes_sent = 0
@@ -116,12 +122,14 @@ class ServerProtocol:
                     
                     if not ack_received:
                         print("Transfer failed: Max retries reached.")
-                        return
+                        success = False
+                        return success
 
         except FileNotFoundError:
             print(f"Error: File not found at {file_path}")
-            return
-    
+            success = False
+            return success
+
     def handle_upload(self, addr):
         print(f"Client {addr} connected for upload.")
 
@@ -205,11 +213,14 @@ class ServerProtocol:
                 return
 
             if protocol == "stop-and-wait":
-                self.send_stop_and_wait(client_socket, addr, file_path)
+                success = self.send_stop_and_wait(client_socket, addr, file_path)
             # elif protocol == "selective-repeat":
-            #     self.send_selective_repeat(client_socket, addr, file_path)
-            
-            print(f"File '{filename}' sent successfully to {addr}.")
+            #     success = self.send_selective_repeat(client_socket, addr, file_path)
+
+            if success:
+                print(f"File '{filename}' sent successfully to {addr}.")
+            else:
+                print(f"Failed to send file '{filename}' to {addr}.")
 
         except socket.timeout: # si hay timeout
             print(f"Timeout during negotiation with client {addr}.")

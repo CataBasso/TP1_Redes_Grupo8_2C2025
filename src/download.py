@@ -1,6 +1,7 @@
 import socket
 import sys
 import argparse
+import os
 
 def argument_parser():
     parser = argparse.ArgumentParser(
@@ -71,7 +72,14 @@ def request_file_info(download_socket, args):
         sys.exit(1)
 
 def receive_stop_and_wait(args, download_socket, filesize):
-    with open(args.dst, "wb") as file:
+    if os.path.isdir(args.dst):
+        file_path = os.path.join(args.dst, args.name)
+    else:
+        file_path = args.dst
+    
+    print(f"Saving file to: {file_path}")
+    
+    with open(file_path, "wb") as file:
         seq_expected = 0
         bytes_received = 0
         while bytes_received < filesize:

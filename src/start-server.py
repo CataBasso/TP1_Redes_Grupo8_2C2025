@@ -37,7 +37,7 @@ def main():
     args = argument_parser()
 
     if not args.host or not args.port:
-        print("Usage: python3 start-server.py <host> <port>")
+        print("Usage: python3 start-server.py -H <host> -p <port>")
         sys.exit(ERROR)
 
     # AF_INET for IPv4, SOCK_DGRAM for UDP
