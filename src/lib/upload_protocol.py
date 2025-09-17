@@ -7,14 +7,15 @@ TIMEOUT = 5
 BUFFER = 1024
 
 class UploadProtocol:
-    def __init__(self, client_socket: socket.socket, args):
-        self.socket = client_socket
+    def __init__(self, args):
         self.args = args
-        self.socket.settimeout(TIMEOUT)
+        self.socket = None
 
     def establish_connection(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.settimeout(TIMEOUT)
         print(f"Connecting to server at {self.args.host}:{self.args.port}")
-
         self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
         try:
             data, addr = self.socket.recvfrom(BUFFER)
@@ -169,6 +170,6 @@ class UploadProtocol:
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if protocol == "stop-and-wait":
             stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
-            return stop_and_wait.send_stop_and_wait(file_size)
+            return stop_and_wait.send_upload(file_size)
         elif protocol == "selective-repeat":
             return self.send_selective_repeat(file_size)

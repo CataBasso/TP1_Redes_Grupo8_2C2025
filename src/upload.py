@@ -26,20 +26,12 @@ def main():
     if not args.host or not args.port or not args.src or not args.name:
         print("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
         sys.exit(1)
-    
-    upload_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    upload_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    protocol = UploadProtocol(upload_socket, args)
-
+    protocol = UploadProtocol(args)
     upload = protocol.upload_file()
     if not upload:
         print("File upload failed.")
-        upload_socket.close()
         sys.exit(1)
-    
-    upload_socket.close()
-    sys.exit(0)
 
 if __name__ == "__main__":
     main()

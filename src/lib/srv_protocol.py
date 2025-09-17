@@ -136,7 +136,7 @@ class ServerProtocol:
 
             if protocol == "stop-and-wait":
                 stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
-                stop_and_wait.recieve_stop_and_wait(client_socket, addr, filesize, file_path)
+                stop_and_wait.receive_upload(client_socket, addr, filesize, file_path)
             elif protocol == "selective-repeat":
                 self.recieve_selective_repeat(client_socket, addr, filesize, file_path)
 

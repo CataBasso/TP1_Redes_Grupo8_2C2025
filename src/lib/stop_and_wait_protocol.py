@@ -10,7 +10,7 @@ class StopAndWaitProtocol:
         self.socket = client_socket
         self.socket.settimeout(TIMEOUT)
 
-    def send_stop_and_wait(self, file_size):
+    def send_upload(self, file_size):
         with open(self.args.src, "rb") as file:
             seq_num = 0
             bytes_sent = 0
@@ -60,12 +60,12 @@ class StopAndWaitProtocol:
             except socket.timeout:
                 print("No response from server after sending EOF.")
                 return False
-    
-    def recieve_stop_and_wait(
+
+    def receive_upload(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
     ):
 
-        with open(file_path, "wb") as recieved_file:
+        with open(file_path, "wb") as received_file:
             seq_expected = 0
             bytes_received = 0
             while bytes_received < filesize:
@@ -80,7 +80,7 @@ class StopAndWaitProtocol:
                     continue
 
                 if seq_received == seq_expected:
-                    recieved_file.write(chunk)
+                    received_file.write(chunk)
                     bytes_received += len(chunk)
                     client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
                     seq_expected = 1 - seq_expected
