@@ -1,6 +1,7 @@
 import os
 import socket
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
+from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 
 TIMEOUT = 10
 BUFFER = 1024
@@ -11,54 +12,6 @@ BUFFER_SW = 4096
 class ServerProtocol:
     def __init__(self, args):
         self.args = args
-
-    def recieve_selective_repeat(
-    self, client_socket: socket.socket, addr, filesize: int, file_path: str
-):
-        seq_expected = 0
-        bytes_received = 0
-        buffer = []
-
-        with open(file_path, "wb") as recieved_file:
-            while bytes_received < filesize:
-                packet, saddr = client_socket.recvfrom(BUFFER_SR)
-                    
-                try:
-                    seq_str, chunk = packet.split(b":", 1)
-                    seq_received = int(seq_str)
-                except Exception:
-                    print(f"Packet format error from {addr}, ignoring.")
-                    continue
-                    
-                if seq_received == seq_expected:
-                    recieved_file.write(chunk)
-                    bytes_received += len(chunk)
-                    seq_expected += 1
-
-                    if buffer:
-                        buffer.sort(key=lambda x: x[0])
-                        
-                        i = 0
-                        while i < len(buffer):
-                            if buffer[i][0] == seq_expected:
-                                buffer_chunk = buffer[i][1]
-                                recieved_file.write(buffer_chunk)
-                                bytes_received += len(buffer_chunk)
-                                seq_expected += 1
-                                buffer.pop(i)
-                            else:
-                                i += 1
-                    
-                    client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
-                else:
-                    print(f"Received packet {seq_received}, expected {seq_expected} - queuing")
-                    buffer.append((seq_received, chunk))
-                    client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
-        
-        while True:
-            packet, addr = client_socket.recvfrom(BUFFER)
-            if packet == b"EOF":
-                break
 
     def handle_upload(self, addr):
         print(f"Client {addr} connected for upload.")
@@ -92,7 +45,8 @@ class ServerProtocol:
                 stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
                 stop_and_wait.receive_upload(client_socket, addr, filesize, file_path)
             elif protocol == "selective-repeat":
-                self.recieve_selective_repeat(client_socket, addr, filesize, file_path)
+                selective_repeat = SelectiveRepeatProtocol(self.args, client_socket)
+                selective_repeat.receive_upload(client_socket, addr, filesize, file_path)
 
             client_socket.sendto(b"UPLOAD_COMPLETE", addr)
             print(f"File {filename} received successfully from {addr}")

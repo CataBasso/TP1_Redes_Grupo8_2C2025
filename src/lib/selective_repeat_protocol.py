@@ -2,7 +2,9 @@ import socket
 import time
 
 BUFFER = 1024
-TIMEOUT = 1.0
+TIMEOUT = 10
+BUFFER_SR = 4096
+
 
 class SelectiveRepeatProtocol:
     def __init__(self, args, sock: socket.socket):
@@ -91,3 +93,52 @@ class SelectiveRepeatProtocol:
         except Exception as e:
             print(f"Error during transfer: {str(e)}")
             return False
+
+    def receive_upload(
+    self, client_socket: socket.socket, addr, filesize: int, file_path: str
+):
+        seq_expected = 0
+        bytes_received = 0
+        buffer = []
+
+        with open(file_path, "wb") as recieved_file:
+            while bytes_received < filesize:
+                packet, saddr = client_socket.recvfrom(BUFFER_SR)
+                    
+                try:
+                    seq_str, chunk = packet.split(b":", 1)
+                    seq_received = int(seq_str)
+                except Exception:
+                    print(f"Packet format error from {addr}, ignoring.")
+                    continue
+                    
+                if seq_received == seq_expected:
+                    recieved_file.write(chunk)
+                    bytes_received += len(chunk)
+                    seq_expected += 1
+
+                    if buffer:
+                        buffer.sort(key=lambda x: x[0])
+                        
+                        i = 0
+                        while i < len(buffer):
+                            if buffer[i][0] == seq_expected:
+                                buffer_chunk = buffer[i][1]
+                                recieved_file.write(buffer_chunk)
+                                bytes_received += len(buffer_chunk)
+                                seq_expected += 1
+                                buffer.pop(i)
+                            else:
+                                i += 1
+                    
+                    client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+                else:
+                    print(f"Received packet {seq_received}, expected {seq_expected} - queuing")
+                    buffer.append((seq_received, chunk))
+                    client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
+        
+        while True:
+            packet, addr = client_socket.recvfrom(BUFFER)
+            if packet == b"EOF":
+                print(f"DEBUG: EOF recibido, enviando UPLOAD_COMPLETE")
+                break
