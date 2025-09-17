@@ -59,52 +59,6 @@ class ServerProtocol:
             packet, addr = client_socket.recvfrom(BUFFER)
             if packet == b"EOF":
                 break
-                
-    def send_stop_and_wait(self, client_socket, addr, file_path):
-        try:
-
-            client_socket.settimeout(TIMEOUT)
-
-            filesize = os.path.getsize(file_path)
-            success = True
-
-            with open(file_path, "rb") as file:
-                seq_num = 0
-                bytes_sent = 0
-                while bytes_sent < filesize:
-                    chunk = file.read(1024)
-                    if not chunk:
-                        break
-                    
-                    packet = f"{seq_num}:".encode() + chunk
-                    ack_received = False
-                    retries = 0
-                    max_retries = 5
-
-                    while not ack_received and retries < max_retries:
-                        client_socket.sendto(packet, addr)
-                        try:
-                            data, _ = client_socket.recvfrom(1024)
-                            response = data.decode()
-                            if response == f"ACK:{seq_num}":
-                                ack_received = True
-                                bytes_sent += len(chunk)
-                                seq_num = 1 - seq_num
-                            else:
-                                print(f"Received unexpected ACK: {response}, expecting ACK:{seq_num}")
-                        except socket.timeout:
-                            retries += 1
-                            print(f"Timeout waiting for ACK:{seq_num}, retrying {retries}/{max_retries}...")
-                    
-                    if not ack_received:
-                        print("Transfer failed: Max retries reached.")
-                        success = False
-                        return success
-
-        except FileNotFoundError:
-            print(f"Error: File not found at {file_path}")
-            success = False
-            return success
 
     def handle_upload(self, addr):
         print(f"Client {addr} connected for upload.")
@@ -189,7 +143,8 @@ class ServerProtocol:
                 return
 
             if protocol == "stop-and-wait":
-                success = self.send_stop_and_wait(client_socket, addr, file_path)
+                stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
+                success = stop_and_wait.send_download(client_socket, addr, file_path)
             # elif protocol == "selective-repeat":
             #     success = self.send_selective_repeat(client_socket, addr, file_path)
 

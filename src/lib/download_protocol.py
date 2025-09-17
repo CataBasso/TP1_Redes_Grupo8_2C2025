@@ -1,6 +1,8 @@
 import socket
 import os
 
+from lib.stop_and_wait_protocol import StopAndWaitProtocol
+
 BUFFER = 1024
 TIMEOUT = 5
 
@@ -67,37 +69,6 @@ class DownloadProtocol:
             print("No response from server after requesting file info, exiting.")
             return None
 
-    def receive_stop_and_wait(self, filesize):
-        if os.path.isdir(self.args.dst):
-            file_path = os.path.join(self.args.dst, self.args.name)
-        else:
-            file_path = self.args.dst
-        print(f"Saving file to: {file_path}")
-        with open(file_path, "wb") as file:
-            seq_expected = 0
-            bytes_received = 0
-            while bytes_received < filesize:
-                try:
-                    packet, _ = self.socket.recvfrom(4096)
-                    seq_str, chunk = packet.split(b":", 1)
-                    seq_received = int(seq_str)
-                    if seq_received == seq_expected:
-                        file.write(chunk)
-                        bytes_received += len(chunk)
-                        self.socket.sendto(f"ACK:{seq_received}".encode(), (self.args.host, self.args.port))
-                        seq_expected = 1 - seq_expected
-                    else:
-                        ack_duplicado = 1 - seq_expected
-                        print(f"Received duplicate packet {seq_received}, expected {seq_expected}. Resending ACK:{ack_duplicado}")
-                        self.socket.sendto(f"ACK:{ack_duplicado}".encode(), (self.args.host, self.args.port))
-                except socket.timeout:
-                    print("Timeout waiting for packet. The server might have stopped.")
-                    return False
-                except ValueError:
-                    print("Received a malformed packet. Ignoring.")
-        print(f"\nFile '{self.args.name}' downloaded successfully to '{self.args.dst}'.")
-        return True
-
     def download_file(self):
         if not self.establish_connection():
             return False
@@ -108,7 +79,8 @@ class DownloadProtocol:
             return False
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if protocol == "stop-and-wait":
-            return self.receive_stop_and_wait(filesize)
+            stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
+            return stop_and_wait.receive_download()
         # elif protocol == "selective-repeat":
         #     return self.receive_selective_repeat(filesize)
         return False
