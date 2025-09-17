@@ -83,6 +83,8 @@ class ServerProtocol:
             - Envía un ACK al cliente.
             7. Si el número de secuencia no es el esperado:
             - Ignora el paquete y reenvía el ACK del último paquete correcto.
+            8. Finalmente, espera el paquete EOF para confirmar la finalización de la transferencia.
+
         """
         with open(file_path, "wb") as recieved_file:
             seq_expected = 0
