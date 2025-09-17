@@ -44,7 +44,7 @@ class ServerProtocol:
             if protocol == "stop-and-wait":
                 stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
                 stop_and_wait.receive_upload(client_socket, addr, filesize, file_path)
-            elif protocol == "selective-repeat":
+            elif protocol == "selective-repeat": #NOOOO DONDE ESTA EL POLIMORFISMO ESTO EN ALGO3 LO MANDO A REENTREGA AAAAAAA
                 selective_repeat = SelectiveRepeatProtocol(self.args, client_socket)
                 selective_repeat.receive_upload(client_socket, addr, filesize, file_path)
 
@@ -99,8 +99,8 @@ class ServerProtocol:
             if protocol == "stop-and-wait":
                 stop_and_wait = StopAndWaitProtocol(self.args, client_socket)
                 success = stop_and_wait.send_download(client_socket, addr, file_path)
-            # elif protocol == "selective-repeat":
-            #     success = self.send_selective_repeat(client_socket, addr, file_path)
+            elif protocol == "selective-repeat":
+                success = self.send_selective_repeat(client_socket, addr, file_path)
 
             if success:
                 print(f"File '{filename}' sent successfully to {addr}.")
