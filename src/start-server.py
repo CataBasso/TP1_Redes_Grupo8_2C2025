@@ -1,8 +1,6 @@
 import socket
 import sys
-import argparse
 import threading
-import os
 from lib.srv_protocol import ServerProtocol
 from lib.parser import get_parser
 

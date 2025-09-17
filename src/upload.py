@@ -1,4 +1,3 @@
-import socket
 import sys
 from lib.upload_protocol import UploadProtocol
 from lib.parser import get_parser
