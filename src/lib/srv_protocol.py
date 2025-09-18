@@ -48,7 +48,7 @@ class ServerProtocol:
                 selective_repeat = SelectiveRepeatProtocol(self.args, client_socket)
                 selective_repeat.receive_upload(client_socket, addr, filesize, file_path)
 
-            client_socket.sendto(b"UPLOAD_COMPLETE", addr)
+            #client_socket.sendto(b"UPLOAD_COMPLETE", addr)
             print(f"File {filename} received successfully from {addr}")
 
             # Se podria cortar la conexion una vez terminado todo y no esperar por el timeout

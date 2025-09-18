@@ -49,17 +49,17 @@ class StopAndWaitProtocol:
                     return False
 
             self.socket.sendto(b"EOF", (self.args.host, self.args.port))
-            try:
-                data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() == "UPLOAD_COMPLETE":
-                    print(f"File {self.args.name} uploaded successfully.")
-                    return True
-                else:
-                    print(f"Unexpected response after EOF: {data.decode()}")
-                    return False
-            except socket.timeout:
-                print("No response from server after sending EOF.")
-                return False
+            # try:
+            #     data, addr = self.socket.recvfrom(BUFFER)
+            #     if data.decode() == "UPLOAD_COMPLETE":
+            print(f"File {self.args.name} uploaded successfully.")
+            return True
+            #     else:
+            #         print(f"Unexpected response after EOF: {data.decode()}")
+            #         return False
+            # except socket.timeout:
+            #     print("No response from server after sending EOF.")
+            #     return False
 
     def receive_upload(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
@@ -87,8 +87,8 @@ class StopAndWaitProtocol:
                 else:
                     client_socket.sendto(f"ACK:{1 - seq_expected}".encode(), addr)
 
-            if bytes_received >= filesize:
-                eof, addr = client_socket.recvfrom(BUFFER)
+            # if bytes_received >= filesize:
+            #     eof, addr = client_socket.recvfrom(BUFFER)
 
     def send_download(self, client_socket: socket.socket, addr, file_path: str):
         try:
