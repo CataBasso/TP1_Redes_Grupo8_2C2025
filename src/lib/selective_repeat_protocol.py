@@ -210,7 +210,7 @@ class SelectiveRepeatProtocol:
             success = False
             return success
 
-    def recieve_download(args, download_socket, filesize):
+    def recieve_download(self, filesize):
         """
         Implementación del protocolo Selective Repeat para la recepción de archivos
         Ventana deslizante con tamaño fijo, manejo de ACKs individuales y reenvío de paquetes perdidos.
@@ -233,10 +233,10 @@ class SelectiveRepeatProtocol:
         8. Se maneja el caso de timeout y paquetes malformados.
         9. Finalmente, se cierra el archivo y se confirma la descarga exitosa.
         """
-        if os.path.isdir(args.dst):
-            file_path = os.path.join(args.dst, args.name)
+        if os.path.isdir(self.args.dst):
+            file_path = os.path.join(self.args.dst, self.args.name)
         else:
-            file_path = args.dst
+            file_path = self.args.dst
 
         print(f"Saving file to: {file_path}")
 
@@ -249,7 +249,7 @@ class SelectiveRepeatProtocol:
             pkts = {}  # Diccionario: {seq_num: (packet, sent_time)}
             while bytes_sent < filesize:
                 try:
-                    packet, _ = download_socket.recvfrom(4096)
+                    packet, _ = self.socket.recvfrom(4096)
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
 
@@ -258,12 +258,12 @@ class SelectiveRepeatProtocol:
                             file.write(chunk)
                             bytes_sent += len(chunk)
                             pkts[seq_received] = (packet, None)
-                            print(f"Received and wrote packet {seq_received}.")
+                            # print(f"Received and wrote packet {seq_received}.")
 
-                        download_socket.sendto(
-                            f"ACK:{seq_received}".encode(), (args.host, args.port)
+                        self.socket.sendto(
+                            f"ACK:{seq_received}".encode(), (self.args.host, self.args.port)
                         )
-                        print(f"Sent ACK for packet {seq_received}.")
+                        # print(f"Sent ACK for packet {seq_received}.")
 
                         while base_num in pkts:
                             del pkts[base_num]
@@ -273,13 +273,17 @@ class SelectiveRepeatProtocol:
                             f"Received out-of-window packet {seq_received}, expected window [{base_num}, {base_num + window_size - 1}]. Ignoring."
                         )
                         if seq_received < base_num:
-                            download_socket.sendto(
-                                f"ACK:{seq_received}".encode(), (args.host, args.port)
+                            self.socket.sendto(
+                                f"ACK:{seq_received}".encode(), (self.args.host, self.args.port)
                             )
                             print(f"Resent ACK for old packet {seq_received}.")
 
                 except socket.timeout:
                     print("Timeout waiting for packet. The server might have stopped.")
-                    break
+                    return False
                 except ValueError:
                     print("Received a malformed packet. Ignoring.")
+                    return False
+
+        print(f"\nFile '{self.args.name}' downloaded successfully to '{self.args.dst}'.")
+        return True

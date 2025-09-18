@@ -1,6 +1,6 @@
 import socket
-import os
 
+from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
 BUFFER = 1024
@@ -82,5 +82,6 @@ class DownloadProtocol:
             stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
             return stop_and_wait.receive_download()
         elif protocol == "selective-repeat":
-            return self.receive_selective_repeat(filesize)
+            selective_repeat = SelectiveRepeatProtocol(self.args, self.socket)
+            return selective_repeat.recieve_download(filesize)
         return False
