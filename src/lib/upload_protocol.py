@@ -5,6 +5,7 @@ from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
 TIMEOUT = 5
 BUFFER = 1024
+MAX_RETRIES = 5
 
 class UploadProtocol:
     def __init__(self, args):
@@ -39,20 +40,26 @@ class UploadProtocol:
     
     def send_protocol_info(self):
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
-        self.socket.sendto(protocol.encode(), (self.args.host, self.args.port))
+        retries = 0
+        
+        while retries < MAX_RETRIES:
+            self.socket.sendto(protocol.encode(), (self.args.host, self.args.port))
 
-        try:
-            data, addr = self.socket.recvfrom(BUFFER)
-            if data.decode() != "PROTOCOL_ACK":
-                print("Server did not acknowledge protocol choice.")
-                return False
-        except socket.timeout:
-            print("No response from server after sending protocol choice, exiting.")
-            return False
-            
-        return True
+            try:
+                data, addr = self.socket.recvfrom(BUFFER)
+                if data.decode() != "PROTOCOL_ACK":
+                    print("Server did not acknowledge protocol choice.")
+                    return False
+                return True
+            except socket.timeout:
+                retries += 1
+                print(f"No response from server after sending protocol choice, retrying... {retries}/{MAX_RETRIES}")
+                
+        print("Max retries reached, exiting.")
+        return False
 
     def send_file_info(self):
+        retries = 0
         if not os.path.isfile(self.args.src):
             print(f"Source file {self.args.src} does not exist.")
             return None
@@ -61,18 +68,21 @@ class UploadProtocol:
         print(f"Uploading file {self.args.name} of size {file_size} bytes.")
 
         file_info = f"{self.args.name}:{file_size}"
-        self.socket.sendto(file_info.encode(), (self.args.host, self.args.port))
+        while retries < MAX_RETRIES:
+            self.socket.sendto(file_info.encode(), (self.args.host, self.args.port))
 
-        try:
-            data, addr = self.socket.recvfrom(BUFFER)
-            if data.decode() != "FILE_INFO_ACK":
-                print("Server did not acknowledge file info.")
-                return None
-        except socket.timeout:
-            print("No response from server after sending file info, exiting.")
-            return None
-        
-        return file_size
+            try:
+                data, addr = self.socket.recvfrom(BUFFER)
+                if data.decode() != "FILE_INFO_ACK":
+                    print("Server did not acknowledge file info.")
+                    return None
+                return file_size
+            except socket.timeout:
+                retries += 1
+                print(f"No response from server after sending file info, retrying... {retries}/{MAX_RETRIES}")
+
+        print("Max retries reached, exiting.")    
+        return False
 
     def upload_file(self):
         if not self.establish_connection():
