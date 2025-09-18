@@ -80,7 +80,7 @@ class DownloadProtocol:
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if protocol == "stop-and-wait":
             stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
-            return stop_and_wait.receive_download()
+            return stop_and_wait.receive_download(filesize)
         elif protocol == "selective-repeat":
             selective_repeat = SelectiveRepeatProtocol(self.args, self.socket)
             return selective_repeat.recieve_download(filesize)

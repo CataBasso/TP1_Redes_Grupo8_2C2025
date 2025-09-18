@@ -122,13 +122,13 @@ class StopAndWaitProtocol:
                     if not ack_received:
                         print("Transfer failed: Max retries reached.")
                         return False
-            client_socket.sendto(b"EOF", addr)
+            #client_socket.sendto(b"EOF", addr)
             return True
         except FileNotFoundError:
             print(f"Error: File not found at {file_path}")
             return False
 
-    def receive_download(self):
+    def receive_download(self, filesize):
         if os.path.isdir(self.args.dst):
             file_path = os.path.join(self.args.dst, self.args.name)
         else:
@@ -137,11 +137,11 @@ class StopAndWaitProtocol:
         with open(file_path, "wb") as file:
             seq_expected = 0
             bytes_received = 0
-            while True:
+            while bytes_received < filesize:
                 try:
                     packet, _ = self.socket.recvfrom(BUFFER)
-                    if packet == b"EOF":
-                        break
+                    #if packet == b"EOF":
+                    #    break
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
                     if seq_received == seq_expected:
@@ -154,6 +154,8 @@ class StopAndWaitProtocol:
                         print(f"Received duplicate packet {seq_received}, expected {seq_expected}. Resending ACK:{ack_duplicado}")
                         self.socket.sendto(f"ACK:{ack_duplicado}".encode(), (self.args.host, self.args.port))
                 except socket.timeout:
+                    if bytes_received < filesize:
+                        break
                     print("Timeout waiting for packet. The server might have stopped.")
                     return False
                 except ValueError:

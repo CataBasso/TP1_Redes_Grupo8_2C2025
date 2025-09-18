@@ -149,11 +149,11 @@ class SelectiveRepeatProtocol:
                     buffer.append((seq_received, chunk))
                     client_socket.sendto(f"ACK:{seq_received}".encode(), addr)
 
-        while True:
-            packet, addr = client_socket.recvfrom(BUFFER)
-            if packet == b"EOF":
-                print(f"DEBUG: EOF recibido, enviando UPLOAD_COMPLETE")
-                break
+        #while True:
+        #    packet, addr = client_socket.recvfrom(BUFFER)
+        #    if packet == b"EOF":
+        #        print(f"DEBUG: EOF recibido, enviando UPLOAD_COMPLETE")
+        #        break
 
     def send_download(self, client_socket, addr, file_path):
         try:
@@ -201,7 +201,7 @@ class SelectiveRepeatProtocol:
                                 packet = f"{seq}:".encode() + buffer[seq]
                                 client_socket.sendto(packet, addr)
 
-                client_socket.sendto(b"EOF", addr)
+                #client_socket.sendto(b"EOF", addr)
 
             return success
 
