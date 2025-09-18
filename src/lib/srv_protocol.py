@@ -58,10 +58,23 @@ class ServerProtocol:
 
     def _negotiate_protocol(self, client_socket, addr):
         """Negocia el protocolo con el cliente"""
-        protocol_data, _ = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
-        protocol = protocol_data.decode()
-        client_socket.sendto(Messages.PROTOCOL_ACK, addr)
-        return protocol
+        retries = 0
+        max_retries = 5
+        protocol = None
+        while retries < max_retries:
+            try:
+                protocol_data, _ = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
+                msg = protocol_data.decode()
+                if msg in ["stop-and-wait", "selective-repeat"]:
+                    protocol = msg
+                    client_socket.sendto(Messages.PROTOCOL_ACK, addr)
+                    return protocol
+                else:
+                    client_socket.sendto(Messages.PROTOCOL_ACK, addr)
+            except socket.timeout:
+                retries += 1
+                print(f"Timeout waiting for protocol from {addr}, retrying {retries}/{max_retries}...")
+        raise socket.timeout("Failed to negotiate protocol after several attempts.")
 
     def _validate_file_info(self, file_info):
         """Valida y extrae información del archivo"""

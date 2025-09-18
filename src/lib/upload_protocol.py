@@ -17,26 +17,31 @@ class UploadProtocol:
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.settimeout(TIMEOUT)
         print(f"Connecting to server at {self.args.host}:{self.args.port}")
-        self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
-        try:
-            data, addr = self.socket.recvfrom(BUFFER)
-            if data.decode() != "UPLOAD_ACK":
-                print("Server did not acknowledge upload client.")
-                return False
-            
-            new_port_data, addr = self.socket.recvfrom(BUFFER)
-            if new_port_data.decode().startswith("PORT:"):
-                new_port = int(new_port_data.decode().split(":")[1])
-                print(f"Server assigned port {new_port} for file upload.")
-                self.args.port = new_port
-            else:
-                print("Did not receive new port from server.")
-                return False
-        except socket.timeout:
-            print("No response from server, exiting.")
-            return False
 
-        return True
+        retries = 0
+        while retries < MAX_RETRIES:
+            self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
+            try:
+                data, addr = self.socket.recvfrom(BUFFER)
+                if data.decode() != "UPLOAD_ACK":
+                    print("Server did not acknowledge upload client.")
+                    return False
+
+                new_port_data, addr = self.socket.recvfrom(BUFFER)
+                if new_port_data.decode().startswith("PORT:"):
+                    new_port = int(new_port_data.decode().split(":")[1])
+                    print(f"Server assigned port {new_port} for file upload.")
+                    self.args.port = new_port
+                    return True
+                else:
+                    print("Did not receive new port from server.")
+                    return False
+            except socket.timeout:
+                retries += 1
+                print(f"No response from server, retrying... {retries}/{MAX_RETRIES}")
+
+        print("Max retries reached, exiting.")
+        return False
     
     def send_protocol_info(self):
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
