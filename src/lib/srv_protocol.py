@@ -59,7 +59,7 @@ class ServerProtocol:
     def _negotiate_protocol(self, client_socket, addr):
         """Negocia el protocolo con el cliente"""
         retries = 0
-        max_retries = 5
+        max_retries = 10
         protocol = None
         while retries < max_retries:
             try:
@@ -101,11 +101,28 @@ class ServerProtocol:
             protocol = self._negotiate_protocol(client_socket, addr)
             print(f"Client using protocol: {protocol}")
 
-            # recibo nombre del archivo
-            file_info, addr = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
-            filename, filesize = self._validate_file_info(file_info)
-            print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
-            client_socket.sendto(Messages.FILE_INFO_ACK, addr)
+            retries = 0
+            max_retries = 10
+            filename, filesize = None, None
+            while retries < max_retries:
+                try:
+                    file_info, addr_recv = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
+                    if addr_recv != addr:
+                        continue  # Ignora mensajes de otros clientes
+                    try:
+                        filename, filesize = self._validate_file_info(file_info)
+                        print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
+                        client_socket.sendto(Messages.FILE_INFO_ACK, addr)
+                        break  # solo salgo si el file info es válido
+                    except ValueError as e:
+                        print(f"Invalid file info from {addr}: {e}")
+                        client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
+                except socket.timeout:
+                    retries += 1
+                    print(f"Timeout waiting for file info from {addr}, retrying {retries}/{max_retries}...")
+            if filename is None or filesize is None:
+                print("Failed to receive valid file info after several attempts.")
+                return
 
             # constituyo la ruta del archivo
             storage_path = (
@@ -134,8 +151,6 @@ class ServerProtocol:
             print(f"Socket error: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
-        finally:
-            client_socket.close()
 
     def handle_download(self, addr):
         """Maneja la descarga de archivos hacia un cliente."""
@@ -187,8 +202,6 @@ class ServerProtocol:
             print(f"Socket error: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")
-        finally:  # en ambos casos, cierro el socket temporal
-            client_socket.close()
 
     def get_protocol(self, protocol_name, args, socket):
         """Devuelve el manejador de protocolo correspondiente."""

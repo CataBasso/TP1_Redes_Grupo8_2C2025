@@ -2,7 +2,7 @@ import socket
 import os
 
 BUFFER = 1024
-TIMEOUT = 5
+TIMEOUT = 2
 
 class StopAndWaitProtocol:
     def __init__(self, args, client_socket: socket.socket):
@@ -22,7 +22,7 @@ class StopAndWaitProtocol:
 
                 ack_received = False
                 retries = 0
-                max_retries = 5
+                max_retries = 10
 
                 while not ack_received and retries < max_retries:
                     self.socket.sendto(packet, (self.args.host, self.args.port))

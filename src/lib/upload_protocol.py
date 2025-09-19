@@ -25,6 +25,7 @@ class UploadProtocol:
                 data, addr = self.socket.recvfrom(BUFFER)
                 if data.decode() != "UPLOAD_ACK":
                     print("Server did not acknowledge upload client.")
+                    print(f"Received: {data.decode()}")
                     return False
 
                 new_port_data, addr = self.socket.recvfrom(BUFFER)
@@ -54,6 +55,7 @@ class UploadProtocol:
                 data, addr = self.socket.recvfrom(BUFFER)
                 if data.decode() != "PROTOCOL_ACK":
                     print("Server did not acknowledge protocol choice.")
+                    print(f"Received: {data.decode()}")
                     return False
                 return True
             except socket.timeout:
