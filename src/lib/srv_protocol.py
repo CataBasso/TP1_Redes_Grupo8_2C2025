@@ -48,14 +48,6 @@ class ServerProtocol:
     def __init__(self, args):
         self.args = args
 
-    def _setup_client_socket(self, addr):
-        """Configura el socket temporal del cliente"""
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.bind(("", 0))
-        client_port = client_socket.getsockname()[1]
-        client_socket.settimeout(NetworkConfig.TIMEOUT)
-        return client_socket, client_port
-
     def _negotiate_protocol(self, client_socket, addr):
         """Negocia el protocolo con el cliente"""
         retries = 0
@@ -76,19 +68,19 @@ class ServerProtocol:
                 print(f"Timeout waiting for protocol from {addr}, retrying {retries}/{max_retries}...")
         raise socket.timeout("Failed to negotiate protocol after several attempts.")
 
-    def _validate_file_info(self, file_info):
-        """Valida y extrae información del archivo"""
-        try:
-            parts = file_info.decode().split(FileInfo.SEPARATOR)
-            if len(parts) != 2:
-                raise ValueError("Invalid file info format")
-            filename, filesize_str = parts
-            filesize = int(filesize_str)
-            if filesize < 0:
-                raise ValueError("Invalid file size")
-            return filename, filesize
-        except (ValueError, UnicodeDecodeError) as e:
-            raise ValueError(f"Invalid file info: {e}")
+    # def _validate_file_info(self, file_info):
+    #     """Valida y extrae información del archivo"""
+    #     try:
+    #         parts = file_info.decode().split(FileInfo.SEPARATOR)
+    #         if len(parts) != 2:
+    #             raise ValueError("Invalid file info format")
+    #         filename, filesize_str = parts
+    #         filesize = int(filesize_str)
+    #         if filesize < 0:
+    #             raise ValueError("Invalid file size")
+    #         return filename, filesize
+    #     except (ValueError, UnicodeDecodeError) as e:
+    #         raise ValueError(f"Invalid file info: {e}")
 
     def handle_upload(self, addr):
         """Maneja la subida de archivos desde un cliente."""
@@ -96,6 +88,7 @@ class ServerProtocol:
         client_socket, client_port = self._setup_client_socket(addr)
         client_socket.sendto(Messages.UPLOAD_ACK, addr)
         client_socket.sendto(f"PORT:{client_port}".encode(), addr)
+        print(f"Assigned port {client_port} for client {addr}")
 
         try:
             protocol = self._negotiate_protocol(client_socket, addr)
@@ -109,19 +102,16 @@ class ServerProtocol:
                     file_info, addr_recv = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
                     if addr_recv != addr:
                         continue  # Ignora mensajes de otros clientes
-                    try:
-                        filename, filesize = self._validate_file_info(file_info)
-                        print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
-                        client_socket.sendto(Messages.FILE_INFO_ACK, addr)
-                        break  # solo salgo si el file info es válido
-                    except ValueError as e:
-                        print(f"Invalid file info from {addr}: {e}")
-                        client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
+                    filename, filesize = file_info.decode().split(FileInfo.SEPARATOR)
+                    filesize = int(filesize)
+                    print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
+                    client_socket.sendto(Messages.FILE_INFO_ACK, addr)
+                    break  # solo salgo si el file info es válido
                 except socket.timeout:
                     retries += 1
                     print(f"Timeout waiting for file info from {addr}, retrying {retries}/{max_retries}...")
             if filename is None or filesize is None:
-                print("Failed to receive valid file info after several attempts.")
+                print("Failed to receive valid file info.")
                 return
 
             # constituyo la ruta del archivo
@@ -135,8 +125,6 @@ class ServerProtocol:
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
             protocol_handler.receive_upload(client_socket, addr, filesize, file_path)
 
-            # la linea que se comento anoche
-            # client_socket.sendto(Messages.UPLOAD_COMPLETE, addr)
             print(f"File {filename} received successfully from {addr}")
 
         except socket.timeout:
@@ -203,24 +191,39 @@ class ServerProtocol:
         except Exception as e:
             print(f"Unexpected error: {e}")
 
-    def get_protocol(self, protocol_name, args, socket):
-        """Devuelve el manejador de protocolo correspondiente."""
-        protocols = {
-            Protocols.STOP_AND_WAIT: StopAndWaitProtocol,
-            Protocols.SELECTIVE_REPEAT: SelectiveRepeatProtocol,
-        }
-        if protocol_name in protocols:
-            return protocols[protocol_name](args, socket)
-        raise ValueError(f"Protocol {protocol_name} not supported")
+    # def get_protocol(self, protocol_name, args, socket):
+    #     """Devuelve el manejador de protocolo correspondiente."""
+    #     protocols = {
+    #         Protocols.STOP_AND_WAIT: StopAndWaitProtocol,
+    #         Protocols.SELECTIVE_REPEAT: SelectiveRepeatProtocol,
+    #     }
+    #     if protocol_name in protocols:
+    #         return protocols[protocol_name](args, socket)
+    #     raise ValueError(f"Protocol {protocol_name} not supported")
 
-    def handle_client(self, addr, data):
-        """Maneja la comunicación con un cliente."""
-        message = {
-            ClientMessages.UPLOAD_CLIENT: self.handle_upload,
-            ClientMessages.DOWNLOAD_CLIENT: self.handle_download,
-        }
-        func = message.get(data.decode())
-        if func:
-            func(addr)
-        else:
-            print(f"Unknown client message from {addr}: {data.decode()}")
+    def handle_request(self, client_socket):
+        retries = 0
+        # message = {
+        #     ClientMessages.UPLOAD_CLIENT: self.handle_upload,
+        #     ClientMessages.DOWNLOAD_CLIENT: self.handle_download,
+        # }
+
+        while retries < 5:
+            try:
+                data, addr = client_socket.recvfrom(1024)
+                print(f"Received protocol choice: {data.decode()}")
+
+                client_socket.sendto(b"ACK", addr)
+                print(f"Sent ACK to client {addr}")
+
+                # func = message.get(data.decode())
+                # connection.sendto(b"ACK", addr)
+            except socket.timeout:
+                retries += 1
+                print(f"Client didn't send protocol choice, retrying... {retries}")
+        # if func:
+        #     func(addr)
+        # else:
+        #     print(f"Unknown client message from {addr}: {data.decode()}")
+        # pass
+    

@@ -8,6 +8,7 @@ BUFFER = 1024
 MAX_RETRIES = 5
 
 class UploadProtocol:
+    
     def __init__(self, args):
         self.args = args
         self.socket = None
@@ -16,33 +17,31 @@ class UploadProtocol:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.settimeout(TIMEOUT)
-        print(f"Connecting to server at {self.args.host}:{self.args.port}")
 
         retries = 0
         while retries < MAX_RETRIES:
+            retries += 1
+
             self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
             try:
+                
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "UPLOAD_ACK":
-                    print("Server did not acknowledge upload client.")
-                    print(f"Received: {data.decode()}")
-                    return False
-
-                new_port_data, addr = self.socket.recvfrom(BUFFER)
-                if new_port_data.decode().startswith("PORT:"):
-                    new_port = int(new_port_data.decode().split(":")[1])
-                    print(f"Server assigned port {new_port} for file upload.")
-                    self.args.port = new_port
+                print("ACK received:", data.decode())
+                print("From address:", addr)
+                
+                if "ACK" in data.decode():
+                    self.socket.sendto(b"ACK", addr)
+                    self.args.port = addr[1]
                     return True
                 else:
-                    print("Did not receive new port from server.")
-                    return False
+                    print("Did not receive port from server.")
+                    continue
             except socket.timeout:
                 retries += 1
                 print(f"No response from server, retrying... {retries}/{MAX_RETRIES}")
-
-        print("Max retries reached, exiting.")
+        print("Max retries reached in establish_connection, exiting.")
         return False
+
     
     def send_protocol_info(self):
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
@@ -99,7 +98,7 @@ class UploadProtocol:
             return False
 
         file_size = self.send_file_info()
-        if file_size is None:
+        if file_size is None or file_size is False:
             return False
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"

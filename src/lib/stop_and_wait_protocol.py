@@ -48,18 +48,9 @@ class StopAndWaitProtocol:
                     print(f"Max retries reached for sequence number {seq_num}, upload failed.")
                     return False
 
-            self.socket.sendto(b"EOF", (self.args.host, self.args.port))
-            # try:
-            #     data, addr = self.socket.recvfrom(BUFFER)
-            #     if data.decode() == "UPLOAD_COMPLETE":
+        
             print(f"File {self.args.name} uploaded successfully.")
             return True
-            #     else:
-            #         print(f"Unexpected response after EOF: {data.decode()}")
-            #         return False
-            # except socket.timeout:
-            #     print("No response from server after sending EOF.")
-            #     return False
 
     def receive_upload(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
