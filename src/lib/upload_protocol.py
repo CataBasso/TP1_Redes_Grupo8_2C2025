@@ -2,10 +2,11 @@ import socket
 import os
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
+from lib.package import Package
 
 TIMEOUT = 5
 BUFFER = 1024
-MAX_RETRIES = 5
+MAX_RETRIES = 10
 
 class UploadProtocol:
     
@@ -46,17 +47,19 @@ class UploadProtocol:
     def send_protocol_info(self):
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         retries = 0
-        
+
+        package = Package(protocol=protocol)
+        package.set_payload('_u')
+
         while retries < MAX_RETRIES:
-            self.socket.sendto(protocol.encode(), (self.args.host, self.args.port))
+            print("protocol info sending...")
+            self.socket.sendto(package.encode(), (self.args.host, self.args.port))
 
             try:
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "PROTOCOL_ACK":
-                    print("Server did not acknowledge protocol choice.")
-                    print(f"Received: {data.decode()}")
-                    return False
-                return True
+                if data.decode() == "ACK":
+                    print(f"Received ACK from protocol: {data.decode()}")
+                    return True
             except socket.timeout:
                 retries += 1
                 print(f"No response from server after sending protocol choice, retrying... {retries}/{MAX_RETRIES}")
@@ -108,3 +111,4 @@ class UploadProtocol:
         elif protocol == "selective-repeat":
             selective_repeat = SelectiveRepeatProtocol(self.args, self.socket)
             return selective_repeat.send_upload(file_size)
+

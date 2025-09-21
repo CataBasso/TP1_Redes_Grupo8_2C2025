@@ -2,6 +2,7 @@ import os
 import socket
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
+from lib.package import Package
 
 
 # Network Configuration
@@ -25,8 +26,8 @@ class Messages:
 
 # Client Message Types
 class ClientMessages:
-    UPLOAD_CLIENT = "UPLOAD_CLIENT"
-    DOWNLOAD_CLIENT = "DOWNLOAD_CLIENT"
+    UPLOAD_CLIENT = 'u'
+    DOWNLOAD_CLIENT = "d"
 
 
 # Protocol Names
@@ -82,63 +83,63 @@ class ServerProtocol:
     #     except (ValueError, UnicodeDecodeError) as e:
     #         raise ValueError(f"Invalid file info: {e}")
 
-    def handle_upload(self, addr):
+    def handle_upload(self):
         """Maneja la subida de archivos desde un cliente."""
-        print(f"Client {addr} connected for upload.")
-        client_socket, client_port = self._setup_client_socket(addr)
-        client_socket.sendto(Messages.UPLOAD_ACK, addr)
-        client_socket.sendto(f"PORT:{client_port}".encode(), addr)
-        print(f"Assigned port {client_port} for client {addr}")
+        print(f"Client connected for upload.")
+        # client_socket, client_port = self._setup_client_socket(addr)
+        # client_socket.sendto(Messages.UPLOAD_ACK, addr)
+        # client_socket.sendto(f"PORT:{client_port}".encode(), addr)
+        # print(f"Assigned port {client_port} for client {addr}")
 
-        try:
-            protocol = self._negotiate_protocol(client_socket, addr)
-            print(f"Client using protocol: {protocol}")
+        # try:
+        #     protocol = self._negotiate_protocol(client_socket, addr)
+        #     print(f"Client using protocol: {protocol}")
 
-            retries = 0
-            max_retries = 10
-            filename, filesize = None, None
-            while retries < max_retries:
-                try:
-                    file_info, addr_recv = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
-                    if addr_recv != addr:
-                        continue  # Ignora mensajes de otros clientes
-                    filename, filesize = file_info.decode().split(FileInfo.SEPARATOR)
-                    filesize = int(filesize)
-                    print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
-                    client_socket.sendto(Messages.FILE_INFO_ACK, addr)
-                    break  # solo salgo si el file info es válido
-                except socket.timeout:
-                    retries += 1
-                    print(f"Timeout waiting for file info from {addr}, retrying {retries}/{max_retries}...")
-            if filename is None or filesize is None:
-                print("Failed to receive valid file info.")
-                return
+        #     retries = 0
+        #     max_retries = 10
+        #     filename, filesize = None, None
+        #     while retries < max_retries:
+        #         try:
+        #             file_info, addr_recv = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
+        #             if addr_recv != addr:
+        #                 continue  # Ignora mensajes de otros clientes
+        #             filename, filesize = file_info.decode().split(FileInfo.SEPARATOR)
+        #             filesize = int(filesize)
+        #             print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
+        #             client_socket.sendto(Messages.FILE_INFO_ACK, addr)
+        #             break  # solo salgo si el file info es válido
+        #         except socket.timeout:
+        #             retries += 1
+        #             print(f"Timeout waiting for file info from {addr}, retrying {retries}/{max_retries}...")
+        #     if filename is None or filesize is None:
+        #         print("Failed to receive valid file info.")
+        #         return
 
-            # constituyo la ruta del archivo
-            storage_path = (
-                self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
-            )
-            os.makedirs(storage_path, exist_ok=True)
-            file_path = os.path.join(storage_path, filename)
+        #     # constituyo la ruta del archivo
+        #     storage_path = (
+        #         self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
+        #     )
+        #     os.makedirs(storage_path, exist_ok=True)
+        #     file_path = os.path.join(storage_path, filename)
 
-            # Se decide el protocolo
-            protocol_handler = self.get_protocol(protocol, self.args, client_socket)
-            protocol_handler.receive_upload(client_socket, addr, filesize, file_path)
+        #     # Se decide el protocolo
+        #     protocol_handler = self.get_protocol(protocol, self.args, client_socket)
+        #     protocol_handler.receive_upload(client_socket, addr, filesize, file_path)
 
-            print(f"File {filename} received successfully from {addr}")
+        #     print(f"File {filename} received successfully from {addr}")
 
-        except socket.timeout:
-            print(f"Timeout while receiving file from {addr}")
-        except ValueError as e:
-            print(f"Invalid data from {addr}: {e}")
-            try:
-                client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
-            except:
-                pass
-        except socket.error as e:
-            print(f"Socket error: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+        # except socket.timeout:
+        #     print(f"Timeout while receiving file from {addr}")
+        # except ValueError as e:
+        #     print(f"Invalid data from {addr}: {e}")
+        #     try:
+        #         client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
+        #     except:
+        #         pass
+        # except socket.error as e:
+        #     print(f"Socket error: {e}")
+        # except Exception as e:
+        #     print(f"Unexpected error: {e}")
 
     def handle_download(self, addr):
         """Maneja la descarga de archivos hacia un cliente."""
@@ -203,21 +204,26 @@ class ServerProtocol:
 
     def handle_request(self, client_socket):
         retries = 0
-        # message = {
-        #     ClientMessages.UPLOAD_CLIENT: self.handle_upload,
-        #     ClientMessages.DOWNLOAD_CLIENT: self.handle_download,
-        # }
+        message = {
+            ClientMessages.UPLOAD_CLIENT: self.handle_upload,
+            ClientMessages.DOWNLOAD_CLIENT: self.handle_download,
+        }
 
         while retries < 5:
             try:
                 data, addr = client_socket.recvfrom(1024)
-                print(f"Received protocol choice: {data.decode()}")
+                p = Package()
+                client_type = data.decode().split('_')[1]
+                print(f"Client type: {client_type}")
+                p.set_payload(data.decode())
+                print("package object:", p.__str__())
 
                 client_socket.sendto(b"ACK", addr)
                 print(f"Sent ACK to client {addr}")
 
-                # func = message.get(data.decode())
-                # connection.sendto(b"ACK", addr)
+                func = message.get(client_type)
+                func()
+
             except socket.timeout:
                 retries += 1
                 print(f"Client didn't send protocol choice, retrying... {retries}")
