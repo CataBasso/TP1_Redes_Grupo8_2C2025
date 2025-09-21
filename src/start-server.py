@@ -27,22 +27,45 @@ def main():
 
     threads = {}
     protocol = ServerProtocol(args)
+    while True:
+        data, addr = skt.recvfrom(BUFFER)
+        try:
+            message = data.decode()
+            parts = message.split(':', 3) # Dividir en máximo 4 partes
 
-    try:
-        while True:
-            data, addr = skt.recvfrom(BUFFER)
-            if addr not in threads:
+            # Validamos que sea un saludo de UPLOAD correcto
+            if len(parts) == 4 and parts[0] == 'UPLOAD_CLIENT': # Asumiendo que usas UPLOAD_CLIENT
+                print(f"SERVIDOR-MAIN: Saludo de UPLOAD recibido de {addr}")
+                # Pasamos toda la info al hilo
                 thread = threading.Thread(
-                    target=handle_client, args=(protocol, addr, data)
+                    target=protocol.handle_upload,
+                    args=(addr, parts[1], parts[2], int(parts[3]))
                 )
-                threads[addr] = thread
                 thread.start()
-    except KeyboardInterrupt:
-        print("Server shutting down.")
-    finally:
-        for thread in threads.values():
-            thread.join()
-        skt.close()
+            else:
+                print(f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando.")
+
+        except (UnicodeDecodeError, ValueError):
+            print(f"SERVIDOR-MAIN: Paquete corrupto de {addr}. Ignorando.")
+    # try:
+    #     while True:
+    #         data, addr = skt.recvfrom(BUFFER)
+    #         message = data.decode()
+
+    #         if message == "UPLOAD_CLIENT" or message == "DOWNLOAD_CLIENT":
+    #             print(f"\nSERVIDOR-MAIN: Petición '{message}' recibida de {addr}, iniciando hilo...")
+    #             thread = threading.Thread(
+    #                 target=handle_client, args=(protocol, addr, data)
+    #             )
+    #             thread.start()
+    #         else:
+    #             print(f"\nSERVIDOR-MAIN: Paquete inesperado de {addr} en puerto principal (contenido: '{message}'). Ignorando.")
+    # except KeyboardInterrupt:
+    #     print("Server shutting down.")
+    # finally:
+    #     for thread in threads.values():
+    #         thread.join()
+    #     skt.close()
 
 
 if __name__ == "__main__":

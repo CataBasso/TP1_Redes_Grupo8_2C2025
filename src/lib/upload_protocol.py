@@ -3,9 +3,9 @@ import os
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
-TIMEOUT = 5
+TIMEOUT = 2
 BUFFER = 1024
-MAX_RETRIES = 5
+MAX_RETRIES = 10
 
 class UploadProtocol:
     def __init__(self, args):
@@ -16,96 +16,132 @@ class UploadProtocol:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.settimeout(TIMEOUT)
-        print(f"Connecting to server at {self.args.host}:{self.args.port}")
+        print(f"CLIENTE: Preparado para conectar con el servidor en {self.args.host}:{self.args.port}")
 
         retries = 0
         while retries < MAX_RETRIES:
+            print(f"CLIENTE: (Intento {retries + 1}/{MAX_RETRIES}) Enviando UPLOAD_CLIENT...")
             self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
             try:
+                print("CLIENTE: Esperando ACK y nuevo puerto del servidor...")
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "UPLOAD_ACK":
-                    print("Server did not acknowledge upload client.")
-                    print(f"Received: {data.decode()}")
-                    return False
+                response = data.decode()
 
-                new_port_data, addr = self.socket.recvfrom(BUFFER)
-                if new_port_data.decode().startswith("PORT:"):
-                    new_port = int(new_port_data.decode().split(":")[1])
-                    print(f"Server assigned port {new_port} for file upload.")
+                # Verificamos si la respuesta es la que esperamos y la procesamos
+                if response.startswith("UPLOAD_ACK:"):
+                    parts = response.split(":")
+                    new_port = int(parts[1])
+                    print(f"CLIENTE: ACK recibido. Servidor asignó el puerto {new_port}. Conexión establecida.")
                     self.args.port = new_port
                     return True
                 else:
-                    print("Did not receive new port from server.")
+                    print(f"CLIENTE: Error - Respuesta inesperada del servidor. Se recibió: {response}")
                     return False
+                    
             except socket.timeout:
                 retries += 1
-                print(f"No response from server, retrying... {retries}/{MAX_RETRIES}")
+                print(f"CLIENTE: Timeout! El servidor no respondió (Intento {retries}/{MAX_RETRIES}). Reintentando...")
 
-        print("Max retries reached, exiting.")
+        print("CLIENTE: Error - Se alcanzó el máximo de reintentos. Terminando.")
         return False
     
-    def send_protocol_info(self):
-        protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
+    def send_protocol_info(self, protocol):
         retries = 0
         
         while retries < MAX_RETRIES:
             self.socket.sendto(protocol.encode(), (self.args.host, self.args.port))
-
             try:
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "PROTOCOL_ACK":
-                    print("Server did not acknowledge protocol choice.")
-                    print(f"Received: {data.decode()}")
+                if data.decode() == "PROTOCOL_ACK":
+                    print("CLIENTE: El servidor confirmó el protocolo.")
+                    return True
+                else:
+                    print(f"El servidor no confirmó la elección del protocolo. Recibido: {data.decode()}")
                     return False
-                return True
             except socket.timeout:
                 retries += 1
-                print(f"No response from server after sending protocol choice, retrying... {retries}/{MAX_RETRIES}")
+                print(f"Sin respuesta del servidor al enviar protocolo, reintentando... {retries}/{MAX_RETRIES}")
                 
-        print("Max retries reached, exiting.")
+        print("Se alcanzó el máximo de reintentos para la elección de protocolo.")
         return False
 
     def send_file_info(self):
         retries = 0
         if not os.path.isfile(self.args.src):
-            print(f"Source file {self.args.src} does not exist.")
+            print(f"El archivo de origen {self.args.src} no existe.")
             return None
 
         file_size = os.path.getsize(self.args.src)
-        print(f"Uploading file {self.args.name} of size {file_size} bytes.")
-
+        print(f"Subiendo archivo {self.args.name} (tamaño: {file_size} bytes).")
         file_info = f"{self.args.name}:{file_size}"
+
+        current_timeout = TIMEOUT
+
         while retries < MAX_RETRIES:
             self.socket.sendto(file_info.encode(), (self.args.host, self.args.port))
 
             try:
+                self.socket.settimeout(current_timeout)
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "FILE_INFO_ACK":
-                    print("Server did not acknowledge file info.")
+                if data.decode() == "FILE_INFO_ACK":
+                    print("Servidor confirmó la información del archivo.")
+                    # Reseteamos el timeout para futuras operaciones
+                    self.socket.settimeout(TIMEOUT) 
+                    return file_size
+                else:
+                    print(f"El servidor respondió de forma inesperada: {data.decode()}")
+                    self.socket.settimeout(TIMEOUT)
                     return None
-                return file_size
             except socket.timeout:
                 retries += 1
-                print(f"No response from server after sending file info, retrying... {retries}/{MAX_RETRIES}")
+                current_timeout *= 2 
+                print(f"Sin respuesta del servidor, reintentando... ({retries}/{MAX_RETRIES}) con nuevo timeout de {current_timeout:.2f}s")
 
-        print("Max retries reached, exiting.")    
+        print("Se alcanzó el máximo de reintentos al enviar la info del archivo.")
+        self.socket.settimeout(TIMEOUT)    
         return False
 
     def upload_file(self):
-        if not self.establish_connection():
-            return False
-
-        if not self.send_protocol_info():
-            return False
-
-        file_size = self.send_file_info()
-        if file_size is None:
-            return False
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
-        if protocol == "stop-and-wait":
-            stop_and_wait = StopAndWaitProtocol(self.args, self.socket)
-            return stop_and_wait.send_upload(file_size)
-        elif protocol == "selective-repeat":
-            selective_repeat = SelectiveRepeatProtocol(self.args, self.socket)
-            return selective_repeat.send_upload(file_size)
+        if not os.path.isfile(self.args.src):
+            print(f"Error: El archivo de origen {self.args.src} no existe.")
+            return False
+        file_size = os.path.getsize(self.args.src)
+        
+        handshake_msg = f"UPLOAD_CLIENT:{protocol}:{self.args.name}:{file_size}"
+        print(f"CLIENTE: Enviando saludo: {handshake_msg}")
+
+        retries = 0
+        current_timeout = TIMEOUT
+        while retries < MAX_RETRIES:
+            self.socket.sendto(handshake_msg.encode(), (self.args.host, self.args.port))
+            try:
+                self.socket.settimeout(current_timeout)
+                data, _ = self.socket.recvfrom(BUFFER)
+                response = data.decode()
+
+                if response.startswith("UPLOAD_OK:"):
+                    new_port = int(response.split(":")[1])
+                    print(f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}.")
+                    self.args.port = new_port
+                    
+                    if protocol == "stop-and-wait":
+                        handler = StopAndWaitProtocol(self.args, self.socket)
+                        return handler.send_upload(file_size)
+                    elif protocol == "selective-repeat":
+                        # ... selective repeat ...
+                        pass
+                else:
+                    print(f"CLIENTE: El servidor rechazó el saludo con: {response}")
+                    return False
+
+            except socket.timeout:
+                retries += 1
+                current_timeout *= 2
+                print(f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s")
+        
+        print("CLIENTE: No se pudo establecer conexión con el servidor.")
+        return False
+

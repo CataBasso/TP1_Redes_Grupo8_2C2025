@@ -1,5 +1,6 @@
 import os
 import socket
+import time
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 
@@ -53,7 +54,7 @@ class ServerProtocol:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.bind(("", 0))
         client_port = client_socket.getsockname()[1]
-        client_socket.settimeout(NetworkConfig.TIMEOUT)
+        #client_socket.settimeout(NetworkConfig.TIMEOUT) si era esto me pongo a llorar
         return client_socket, client_port
 
     def _negotiate_protocol(self, client_socket, addr):
@@ -66,15 +67,15 @@ class ServerProtocol:
                 protocol_data, _ = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
                 msg = protocol_data.decode()
                 if msg in ["stop-and-wait", "selective-repeat"]:
-                    protocol = msg
+                    print(f"SERVIDOR: Protocolo '{msg}' aceptado. Enviando ACK a {addr}.")
                     client_socket.sendto(Messages.PROTOCOL_ACK, addr)
-                    return protocol
+                    return msg
                 else:
-                    client_socket.sendto(Messages.PROTOCOL_ACK, addr)
+                    print(f"SERVIDOR: Mensaje de protocolo inválido de {addr} (contenido: '{msg}'). Ignorando.")
             except socket.timeout:
                 retries += 1
-                print(f"Timeout waiting for protocol from {addr}, retrying {retries}/{max_retries}...")
-        raise socket.timeout("Failed to negotiate protocol after several attempts.")
+                print(f"Timeout esperando el protocolo de {addr}, reintentando {retries}/{max_retries}...")
+        raise socket.timeout("Fallo al negociar el protocolo: se agotaron los reintentos.")
 
     def _validate_file_info(self, file_info):
         """Valida y extrae información del archivo"""
@@ -90,67 +91,57 @@ class ServerProtocol:
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(f"Invalid file info: {e}")
 
-    def handle_upload(self, addr):
-        """Maneja la subida de archivos desde un cliente."""
-        print(f"Client {addr} connected for upload.")
-        client_socket, client_port = self._setup_client_socket(addr)
-        client_socket.sendto(Messages.UPLOAD_ACK, addr)
-        client_socket.sendto(f"PORT:{client_port}".encode(), addr)
+    # def handle_upload(self, addr):
+    #     """Maneja la subida de archivos desde un cliente."""
+    #     print(f"SERVIDOR: Hilo iniciado para atender upload de {addr}")
+    #     client_socket, client_port = self._setup_client_socket(addr)
 
+    #     print(f"SERVIDOR: Socket temporal creado en el puerto {client_port}")
+
+    #     response = f"UPLOAD_ACK:{client_port}"
+    #     print(f"SERVIDOR: Enviando respuesta combinada '{response}' a {addr}")
+    #     client_socket.sendto(response.encode(), addr)
+
+    #     try:
+    #         protocol = self._negotiate_protocol(client_socket, addr)
+    #         print(f"SERVIDOR: Cliente usa protocolo: {protocol}")
+
+    #         protocol_handler = self.get_protocol(protocol, self.args, client_socket)
+
+    #         # Esta función ahora manejará todo, desde recibir el file_info hasta el EOF.
+    #         # Devuelve True/False y el nombre del archivo para el log.
+    #         success, filename = protocol_handler.receive_upload(addr, self._validate_file_info)
+           
+    #         if success:
+    #             print(f"File '{filename}' received successfully from {addr}")
+    #         else:
+    #             print(f"File transfer from {addr} failed.")
+    #     except socket.timeout:
+    #         print(f"Timeout en la conexión con {addr}. Cerrando hilo.")
+    #     except Exception as e:
+    #         print(f"Error inesperado en handle_upload: {e}")
+    def handle_upload(self, addr, protocol, filename, filesize):
         try:
-            protocol = self._negotiate_protocol(client_socket, addr)
-            print(f"Client using protocol: {protocol}")
+            client_socket, client_port = self._setup_client_socket(addr)
+            print(f"SERVIDOR: Hilo para {addr} en puerto temporal {client_port}")
 
-            retries = 0
-            max_retries = 10
-            filename, filesize = None, None
-            while retries < max_retries:
-                try:
-                    file_info, addr_recv = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
-                    if addr_recv != addr:
-                        continue  # Ignora mensajes de otros clientes
-                    try:
-                        filename, filesize = self._validate_file_info(file_info)
-                        print(f"Receiving file {filename} of size {filesize} bytes from {addr}")
-                        client_socket.sendto(Messages.FILE_INFO_ACK, addr)
-                        break  # solo salgo si el file info es válido
-                    except ValueError as e:
-                        print(f"Invalid file info from {addr}: {e}")
-                        client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
-                except socket.timeout:
-                    retries += 1
-                    print(f"Timeout waiting for file info from {addr}, retrying {retries}/{max_retries}...")
-            if filename is None or filesize is None:
-                print("Failed to receive valid file info after several attempts.")
-                return
-
-            # constituyo la ruta del archivo
-            storage_path = (
-                self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
-            )
-            os.makedirs(storage_path, exist_ok=True)
-            file_path = os.path.join(storage_path, filename)
-
-            # Se decide el protocolo
+            # Enviamos la única confirmación con el nuevo puerto
+            response = f"UPLOAD_OK:{client_port}"
+            client_socket.sendto(response.encode(), addr)
+            
+            # Obtenemos el manejador de protocolo y procedemos directamente a recibir el archivo
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
-            protocol_handler.receive_upload(client_socket, addr, filesize, file_path)
+            
+            # Llamamos a la versión refactorizada de receive_upload
+            success, _ = protocol_handler.receive_upload(addr, filename, filesize)
 
-            # la linea que se comento anoche
-            # client_socket.sendto(Messages.UPLOAD_COMPLETE, addr)
-            print(f"File {filename} received successfully from {addr}")
+            if success:
+                print(f"File '{filename}' received successfully from {addr}")
+            else:
+                print(f"File transfer from {addr} failed.")
 
-        except socket.timeout:
-            print(f"Timeout while receiving file from {addr}")
-        except ValueError as e:
-            print(f"Invalid data from {addr}: {e}")
-            try:
-                client_socket.sendto(Messages.ERROR_INVALID_FORMAT, addr)
-            except:
-                pass
-        except socket.error as e:
-            print(f"Socket error: {e}")
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"Error fatal en el hilo de {addr}: {e}")
 
     def handle_download(self, addr):
         """Maneja la descarga de archivos hacia un cliente."""

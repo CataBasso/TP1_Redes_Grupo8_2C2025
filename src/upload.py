@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 from lib.upload_protocol import UploadProtocol
 from lib.parser import get_parser
 
@@ -10,9 +12,20 @@ def main():
         sys.exit(1)
 
     protocol = UploadProtocol(args)
+    start_time = time.monotonic()
     upload = protocol.upload_file()
-    if not upload:
-        print("File upload failed.")
+    end_time = time.monotonic()
+
+    if upload:
+        duration = end_time - start_time
+        file_size_bytes = os.path.getsize(args.src)
+        throughput_kbps = (file_size_bytes * 8) / (duration * 1024) if duration > 0 else 0
+        
+        print(f"\n--- Transferencia Completa ---")
+        print(f"Tiempo total: {duration:.4f} segundos.")
+        print(f"Velocidad promedio: {throughput_kbps:.2f} Kbps.")
+    else:
+        print("\nLa transferencia de archivos falló.")
         sys.exit(1)
 
 if __name__ == "__main__":
