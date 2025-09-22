@@ -31,41 +31,38 @@ def main():
         data, addr = skt.recvfrom(BUFFER)
         try:
             message = data.decode()
-            parts = message.split(':', 3) # Dividir en máximo 4 partes
+            parts = message.split(':', 4) 
 
             # Validamos que sea un saludo de UPLOAD correcto
-            if len(parts) == 4 and parts[0] == 'UPLOAD_CLIENT': # Asumiendo que usas UPLOAD_CLIENT
+            if len(parts) == 4 and parts[0] == 'UPLOAD_CLIENT':
+                # Formato: "UPLOAD_CLIENT:protocol:filename:filesize"
                 print(f"SERVIDOR-MAIN: Saludo de UPLOAD recibido de {addr}")
-                # Pasamos toda la info al hilo
                 thread = threading.Thread(
                     target=protocol.handle_upload,
                     args=(addr, parts[1], parts[2], int(parts[3]))
                 )
                 thread.start()
+            elif len(parts) == 3 and parts[0] == 'DOWNLOAD_CLIENT':
+                # Formato: "DOWNLOAD_CLIENT:protocol:filename"
+                print(f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}")
+                thread = threading.Thread(
+                    target=protocol.handle_download,
+                    args=(addr, parts[1], parts[2])
+                )
+                thread.start()
             else:
                 print(f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando.")
 
-        except (UnicodeDecodeError, ValueError):
-            print(f"SERVIDOR-MAIN: Paquete corrupto de {addr}. Ignorando.")
-    # try:
-    #     while True:
-    #         data, addr = skt.recvfrom(BUFFER)
-    #         message = data.decode()
-
-    #         if message == "UPLOAD_CLIENT" or message == "DOWNLOAD_CLIENT":
-    #             print(f"\nSERVIDOR-MAIN: Petición '{message}' recibida de {addr}, iniciando hilo...")
-    #             thread = threading.Thread(
-    #                 target=handle_client, args=(protocol, addr, data)
-    #             )
-    #             thread.start()
-    #         else:
-    #             print(f"\nSERVIDOR-MAIN: Paquete inesperado de {addr} en puerto principal (contenido: '{message}'). Ignorando.")
+        except (UnicodeDecodeError, ValueError) as e:
+            print(f"SERVIDOR-MAIN: Paquete corrupto de {addr}:{e}. Ignorando.")
+    
     # except KeyboardInterrupt:
     #     print("Server shutting down.")
     # finally:
-    #     for thread in threads.values():
-    #         thread.join()
-    #     skt.close()
+    #    for thread in threading.enumerate():
+    #        if thread != threading.current_thread():
+    #            thread.join(timeout=1.0)
+    #    skt.close()
 
 
 if __name__ == "__main__":

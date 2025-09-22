@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 from lib.download_protocol import DownloadProtocol
 from lib.parser import get_parser
 
@@ -10,10 +12,19 @@ def main():
         sys.exit(1)
 
     protocol = DownloadProtocol(args)
-    success = protocol.download_file()
-    if not success:
-        print("File download failed.")
+    start_time = time.monotonic()
+    download = protocol.download_file()
+    end_time = time.monotonic()
+
+    if download:
+        duration = end_time - start_time
+        
+        print(f"\n--- Transferencia Completa ---")
+        print(f"Tiempo total: {duration:.4f} segundos.")
+    else:
+        print("\nLa transferencia de archivos falló.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
