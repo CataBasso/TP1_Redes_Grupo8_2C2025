@@ -2,7 +2,7 @@ import os
 import socket
 import time
 
-BUFFER = 1024
+BUFFER = 2
 TIMEOUT = 10
 BUFFER_SR = 4096
 
@@ -40,6 +40,7 @@ class SelectiveRepeatProtocol:
                         pkts[next_seq_num] = (packet, time.time())
 
                         # Enviar paquete
+                        print(f"trying to send packet {chunk}\n")
                         self.socket.sendto(packet, (self.args.host, self.args.port))
                         next_seq_num += 1
                         bytes_sent += bytes_read
@@ -54,7 +55,7 @@ class SelectiveRepeatProtocol:
                                 current_time,
                             )  # Actualizar timestamp
 
-                    self.socket.settimeout(0.1)
+                    self.socket.settimeout(5)
 
                     try:
                         data, addr = self.socket.recvfrom(1024)
@@ -110,11 +111,11 @@ class SelectiveRepeatProtocol:
         seq_expected = 0
         bytes_received = 0
         buffer = []
-
+        print("receive upload\n")
         with open(file_path, "wb") as recieved_file:
             while bytes_received < filesize:
                 packet, saddr = client_socket.recvfrom(BUFFER_SR)
-
+                print(packet.decode())
                 try:
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)

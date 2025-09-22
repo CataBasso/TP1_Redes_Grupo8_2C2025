@@ -81,7 +81,7 @@ class UploadProtocol:
             try:
                 data, addr = self.socket.recvfrom(BUFFER)
                 if data.decode() == "FILE_INFO_ACK":
-                    print("Server did not acknowledge file info.")
+                    print("Server acknowledge file info.")
                     return file_size
 
             except socket.timeout:

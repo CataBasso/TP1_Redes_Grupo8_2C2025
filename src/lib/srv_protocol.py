@@ -76,13 +76,15 @@ class ServerProtocol:
             if "=" in data.decode():
                 client_socket.sendto(b"FILE_INFO_ACK", addr)
                 continue
-            else:
-                print(f"protocol type sw {repr(self.protocol_type)}, expected: {repr(Protocols.STOP_AND_WAIT)}")                
+            else:                
                 if Protocols.STOP_AND_WAIT in self.protocol_type:
+                    print(f"protocol type sw {repr(self.protocol_type)}, expected: {repr(Protocols.STOP_AND_WAIT)}")                
                     p = StopAndWaitProtocol(self.args,client_socket)
                     p.receive_upload(client_socket, addr, int(file_size), file_path)
                 else:
-                    pass
+                    print(f"protocol type sr {repr(self.protocol_type)}, expected: {repr(Protocols.SELECTIVE_REPEAT)}")
+                    p = SelectiveRepeatProtocol(self.args, client_socket)
+                    p.receive_upload(client_socket, addr, int(file_size), file_size)
 
 
     def handle_upload(self, client_socket):
