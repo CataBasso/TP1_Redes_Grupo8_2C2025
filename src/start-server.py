@@ -4,7 +4,7 @@ import threading
 from lib.srv_protocol import ServerProtocol
 from lib.parser import get_parser
 
-BUFFER = 1024
+BUFFER = 4064
 ERROR = 1
 
 def handle_client(protocol: ServerProtocol, addr, data):
