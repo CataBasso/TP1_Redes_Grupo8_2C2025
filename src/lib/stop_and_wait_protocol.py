@@ -66,7 +66,7 @@ class StopAndWaitProtocol:
                 try:
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
-                except Exception:
+                except Exception or socket.timeout:
                     print(f"Packet format error from {addr}, ignoring.")
                     continue
 

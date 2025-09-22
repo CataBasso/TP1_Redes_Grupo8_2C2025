@@ -1,7 +1,7 @@
 import socket
 
 BUFFER_SIZE = 4096
-TIMEOUT = 5  # seconds
+TIMEOUT = 15  # seconds
 
 class Socket:
     def __init__(self, host="0.0.0.0", port=0):
@@ -70,4 +70,7 @@ class Socket:
             f"Failed to establish connection with client {addr} after {max_retries} attempts"
         )
         return False
+    
+    def close(self):
+        self.socket.close()
         

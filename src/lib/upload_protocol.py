@@ -4,7 +4,7 @@ from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 from lib.package import Package
 
-TIMEOUT = 5
+TIMEOUT = 2
 BUFFER = 1024
 MAX_RETRIES = 10
 
@@ -21,8 +21,6 @@ class UploadProtocol:
 
         retries = 0
         while retries < MAX_RETRIES:
-            retries += 1
-
             self.socket.sendto(b"UPLOAD_CLIENT", (self.args.host, self.args.port))
             try:
                 
@@ -57,7 +55,7 @@ class UploadProtocol:
 
             try:
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() == "ACK":
+                if data.decode() == "PROTOCOL-ACK":
                     print(f"Received ACK from protocol: {data.decode()}")
                     return True
             except socket.timeout:
@@ -76,16 +74,16 @@ class UploadProtocol:
         file_size = os.path.getsize(self.args.src)
         print(f"Uploading file {self.args.name} of size {file_size} bytes.")
 
-        file_info = f"{self.args.name}:{file_size}"
+        file_info = f"{self.args.name}={file_size}"
         while retries < MAX_RETRIES:
             self.socket.sendto(file_info.encode(), (self.args.host, self.args.port))
 
             try:
                 data, addr = self.socket.recvfrom(BUFFER)
-                if data.decode() != "FILE_INFO_ACK":
+                if data.decode() == "FILE_INFO_ACK":
                     print("Server did not acknowledge file info.")
-                    return None
-                return file_size
+                    return file_size
+
             except socket.timeout:
                 retries += 1
                 print(f"No response from server after sending file info, retrying... {retries}/{MAX_RETRIES}")
