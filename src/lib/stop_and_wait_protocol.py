@@ -3,6 +3,7 @@ import os
 import time
 
 BUFFER = 1024
+PACKET_BUFFER = BUFFER + 10  # Buffer más grande para recibir paquetes
 TIMEOUT = 2
 
 class StopAndWaitProtocol:
@@ -23,12 +24,20 @@ class StopAndWaitProtocol:
                 
                 # Calcular cuánto leer (puede ser menos que BUFFER al final)
                 bytes_to_read = min(BUFFER, file_size - bytes_sent)
+                
+                # ← MOVER: Obtener posición actual del archivo justo antes de leer
+                file_position = file.tell()
                 chunk = file.read(bytes_to_read)
                 bytes_read = len(chunk)
                 
                 # Verificación crítica: si no leímos nada, salir
                 if bytes_read == 0:
                     print(f"WARNING: EOF alcanzado. bytes_sent={bytes_sent}, file_size={file_size}")
+                    break
+                
+                # ← NUEVO: Verificar que leímos lo esperado
+                if bytes_read != bytes_to_read and bytes_sent + bytes_read < file_size:
+                    print(f"ERROR: Se esperaba leer {bytes_to_read} bytes, pero solo se leyeron {bytes_read}")
                     break
                 
                 # Calcular progreso correctamente
@@ -39,18 +48,18 @@ class StopAndWaitProtocol:
                 print(f"Progreso: {bytes_sent}/{file_size} bytes ({progress_percent:.1f}%)")
                 print(f"Quedan: {bytes_remaining} bytes por enviar")
                 print(f"Leyendo {bytes_read} bytes (de {bytes_to_read} solicitados)")
+                print(f"Posición archivo: {file_position} -> {file.tell()}")
 
                 packet = f"{seq_num}:".encode() + chunk
 
                 ack_received = False
                 retries = 0
                 max_retries = 10
-
-                current_timeout = 0.5
-                max_timeout = 3.0
+                current_timeout = TIMEOUT
+                max_timeout = 8.0
 
                 while not ack_received and retries < max_retries: 
-                    print(f"--> [ENVÍO] Paquete {seq_num} ({bytes_read} bytes)")
+                    print(f"--> [ENVÍO] Paquete {seq_num} ({bytes_read} bytes) - Chunk real: {len(chunk)} bytes")
                     self.socket.sendto(packet, (self.args.host, self.args.port))
                     
                     try:
@@ -64,20 +73,29 @@ class StopAndWaitProtocol:
                             print(f"    [ÉXITO] ACK para paquete {seq_num} es correcto.")
                             ack_received = True
                             if retries == 0:
-                                current_timeout = max(current_timeout * 0.9, 0.3)
+                                current_timeout = max(current_timeout * 0.9, 1.0)
                         else:
                             print(f"    [IGNORAR] ACK incorrecto: {response}, esperaba ACK:{seq_num}")
-                            pass
                     except socket.timeout:
                         retries += 1
-                        current_timeout = min(current_timeout * 1.8, max_timeout)
-                        print(f"    [TIMEOUT] Timeout {retries}/{max_retries}")
+                        current_timeout = min(current_timeout * 1.5, max_timeout)
+                        print(f"    [TIMEOUT] Timeout {retries}/{max_retries}, nuevo timeout: {current_timeout:.1f}s")
+                        
+                        # ← CORREGIR: Volver a la posición y releer
+                        if not ack_received:
+                            print(f"    [REINTENTO] Volviendo a posición {file_position} y releyendo {bytes_to_read} bytes")
+                            file.seek(file_position)
+                            chunk = file.read(bytes_to_read)
+                            if len(chunk) != bytes_read:
+                                print(f"    [WARNING] Tamaño del chunk cambió: era {bytes_read}, ahora {len(chunk)}")
+                                bytes_read = len(chunk)
+                            packet = f"{seq_num}:".encode() + chunk
 
                 if not ack_received:
                     print(f"ERROR: No se pudo enviar el paquete {seq_num} después de {max_retries} intentos")
                     return False
                     
-                # Actualizar progreso
+                # Actualizar progreso SOLO si ACK fue recibido
                 bytes_sent += bytes_read
                 seq_num = 1 - seq_num
                 
@@ -89,13 +107,12 @@ class StopAndWaitProtocol:
                     print(f"    [COMPLETO] Todos los bytes han sido enviados!")
                     break
 
-        print(f"Archivo '{self.args.name}' subido correctamente - {bytes_sent} bytes transferidos.")
-        print(f"Verificación final: {bytes_sent} de {file_size} bytes ({(bytes_sent/file_size)*100:.1f}%)")
-        return True
+            print(f"Archivo '{self.args.name}' subido correctamente - {bytes_sent} bytes transferidos.")
+            print(f"Verificación final: {bytes_sent} de {file_size} bytes ({(bytes_sent/file_size)*100:.1f}%)")
+            return True
         
 
     def receive_upload(self, addr, filename, filesize):
-    # Ya tenemos el nombre y tamaño, así que construimos la ruta directamente
         storage_path = self.args.storage if self.args.storage else "storage"
         os.makedirs(storage_path, exist_ok=True)
         file_path = os.path.join(storage_path, filename)
@@ -107,16 +124,19 @@ class StopAndWaitProtocol:
             bytes_received = 0
             last_correct_seq = -1
             packet_count = 0
+            consecutive_timeouts = 0  # ← NUEVO: Contador de timeouts consecutivos
+            MAX_CONSECUTIVE_TIMEOUTS = 3  # ← NUEVO: Límite de timeouts
 
             while bytes_received < filesize:
                 try:
-                    packet, _ = self.socket.recvfrom(BUFFER)
+                    packet, _ = self.socket.recvfrom(PACKET_BUFFER)
+                    consecutive_timeouts = 0  # ← NUEVO: Reset contador en recepción exitosa
                     packet_count += 1
-                    # seq_str, chunk = packet.split(b":", 1)
-                    # seq_received = int(seq_str)
+                    
                     if b":" not in packet:
                         print(f"<-- [ERROR] Paquete {packet_count} sin formato ':' - ignorando")
                         continue
+                        
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
                     chunk_size = len(chunk)    
@@ -135,18 +155,36 @@ class StopAndWaitProtocol:
                         if packet_count % 50 == 0:
                             progress = (bytes_received / filesize) * 100
                             print(f"    [PROGRESO-SERVIDOR] {bytes_received}/{filesize} bytes ({progress:.1f}%)")
+                            
+                        # ← NUEVO: Verificar si ya recibimos todo
+                        if bytes_received >= filesize:
+                            print(f"    [COMPLETO] Todos los bytes recibidos: {bytes_received}/{filesize}")
+                            break
+                            
                     else:
                         print(f"<-- Esperaba seq:{seq_expected}, recibido seq:{seq_received} - paquete duplicado")
                         if last_correct_seq != -1:
                             ack_msg = f"ACK:{last_correct_seq}"
                             print(f"--> [REENVÍO-ACK] {ack_msg}")
                             self.socket.sendto(ack_msg.encode(), addr)
-                except (socket.timeout, ValueError) as e:
+                            
+                except socket.timeout:
+                    consecutive_timeouts += 1  # ← NUEVO: Incrementar contador
+                    print(f"<-- [TIMEOUT] Timeout {consecutive_timeouts}/{MAX_CONSECUTIVE_TIMEOUTS} - bytes_received: {bytes_received}/{filesize}")
+                    
+                    # ← NUEVO: Si tenemos muchos timeouts consecutivos, verificar si ya terminamos
+                    if consecutive_timeouts >= MAX_CONSECUTIVE_TIMEOUTS:
+                        if bytes_received >= filesize:
+                            print(f"<-- [TERMINACIÓN] Recibidos todos los bytes ({bytes_received}/{filesize}), saliendo por timeouts")
+                            break
+                        else:
+                            print(f"<-- [ERROR] Timeouts consecutivos pero faltan bytes: {bytes_received}/{filesize}")
+                            # Podríamos decidir si continuar o fallar aquí
+                            
+                except (ValueError, UnicodeDecodeError) as e:
                     print(f"<-- [ERROR] Error procesando paquete: {type(e).__name__} - ignorando")
                     continue
-                except UnicodeDecodeError:
-                    print(f"<-- [ERROR] Paquete con datos binarios corruptos - ignorando")
-                    continue
+
 
         print(f"SERVIDOR: Archivo completo recibido. Entrando en estado TIME_WAIT (3s)...")
         end_time = time.time() + 3
