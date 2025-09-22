@@ -1,8 +1,8 @@
 import socket
 import os
 
-BUFFER = 1024
-TIMEOUT = 2
+BUFFER = 5
+TIMEOUT = 10
 
 class StopAndWaitProtocol:
     def __init__(self, args, client_socket: socket.socket):
@@ -11,13 +11,15 @@ class StopAndWaitProtocol:
         self.socket.settimeout(TIMEOUT)
 
     def send_upload(self, file_size):
+        print("sw protocol started...")
+        self.socket.settimeout(5)
         with open(self.args.src, "rb") as file:
             seq_num = 0
             bytes_sent = 0
             while bytes_sent < file_size:
                 chunk = file.read(BUFFER)
                 bytes_read = len(chunk)
-
+                print("chunk sent:" + str(chunk))
                 packet = f"{seq_num}:".encode() + chunk
 
                 ack_received = False
@@ -55,12 +57,14 @@ class StopAndWaitProtocol:
     def receive_upload(
         self, client_socket: socket.socket, addr, filesize: int, file_path: str
     ):
-
+        print("sw receive started...")
+        client_socket.settimeout(10)
         with open(file_path, "wb") as received_file:
             seq_expected = 0
             bytes_received = 0
             while bytes_received < filesize:
                 packet, addr = client_socket.recvfrom(BUFFER)
+                print("received:" + packet.decode() + "\n")
                 if packet == b"EOF":
                     break
                 try:

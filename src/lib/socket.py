@@ -56,9 +56,11 @@ class Socket:
                     print(f"Received ACK from client {addr}")
                     return True
                 else:
-                    print(
-                        f"Received unexpected response from {addr_recv}: {data.decode()}"
-                    )
+                    if "_" in data.decode():
+                        print(
+                            f"Should move foward: {data.decode()}"
+                        )
+                        return True
 
             except cliente_socket.timeout:
                 retry_count += 1
