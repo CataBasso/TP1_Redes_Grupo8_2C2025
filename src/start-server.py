@@ -10,7 +10,6 @@ ERROR = 1
 def handle_client(protocol: ServerProtocol, addr, data):
     protocol.handle_client(addr, data)
 
-
 def main():
     args = get_parser("server")
 
@@ -23,9 +22,8 @@ def main():
     skt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     skt.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     skt.bind((args.host, args.port))
-    print(f"Server listening on {args.host}:{args.port}")
+    print(f"SERVIDOR-MAIN Esuchando: {args.host}:{args.port}")
 
-    threads = {}
     protocol = ServerProtocol(args)
     while True:
         data, addr = skt.recvfrom(BUFFER)
@@ -42,6 +40,7 @@ def main():
                     args=(addr, parts[1], parts[2], int(parts[3]))
                 )
                 thread.start()
+            # Validamos que sea un saludo de DOWNLOAD correcto
             elif len(parts) == 3 and parts[0] == 'DOWNLOAD_CLIENT':
                 # Formato: "DOWNLOAD_CLIENT:protocol:filename"
                 print(f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}")

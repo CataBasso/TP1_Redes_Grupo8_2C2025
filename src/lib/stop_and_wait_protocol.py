@@ -36,9 +36,7 @@ class StopAndWaitProtocol:
                 chunk = file.read(bytes_to_read)
                 bytes_read = len(chunk)
                 
-                if bytes_read == 0:
-                    print(f"WARNING: EOF alcanzado. bytes_sent={bytes_sent}, file_size={file_size}")
-                    break
+                if bytes_read == 0: break
 
                 if packet_count == 1 or packet_count % 100 == 0:
                     progress = (bytes_sent / file_size) * 100
@@ -51,8 +49,8 @@ class StopAndWaitProtocol:
                 retries = 0
                 
                 while not ack_received and retries < MAX_RETRIES: 
-                    if retries > 0:
-                        print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
+                    # if retries > 0:
+                    #     print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
                     
                     self.socket.sendto(packet, (self.args.host, self.args.port))
                     send_time = time.monotonic()
@@ -202,9 +200,7 @@ class StopAndWaitProtocol:
                 chunk = file.read(bytes_to_read)
                 bytes_read = len(chunk)
                 
-                if bytes_read == 0:
-                    print(f"WARNING: EOF alcanzado. bytes_sent={bytes_sent}, filesize={filesize}")
-                    break
+                if bytes_read == 0: break
 
                 if packet_count == 1 or packet_count % 100 == 0:
                     progress = (bytes_sent / filesize) * 100
