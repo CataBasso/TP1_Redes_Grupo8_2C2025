@@ -4,7 +4,7 @@ import time
 
 BUFFER = 1024
 PACKET_BUFFER = BUFFER + 10  # Buffer más grande para recibir paquetes
-TIMEOUT = 2
+TIMEOUT = 0.5
 
 class StopAndWaitProtocol:
     def __init__(self, args, client_socket: socket.socket):
