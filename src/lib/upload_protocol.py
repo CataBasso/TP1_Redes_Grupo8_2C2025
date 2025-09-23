@@ -2,6 +2,7 @@ import socket
 import os
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
+from lib.logger import get_logger
 
 TIMEOUT = 2
 BUFFER = 1024
@@ -13,16 +14,17 @@ class UploadProtocol:
         self.socket = None
 
     def upload_file(self):
+        logger = get_logger()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if not os.path.isfile(self.args.src):
-            print(f"Error: El archivo de origen {self.args.src} no existe.")
+            logger.error(f"Source file {self.args.src} does not exist")
             return False
         file_size = os.path.getsize(self.args.src)
         
         handshake_msg = f"UPLOAD_CLIENT:{protocol}:{self.args.name}:{file_size}"
-        print(f"CLIENTE: Enviando saludo: {handshake_msg}")
+        logger.debug(f"Sending handshake: {handshake_msg}")
 
         retries = 0
         current_timeout = TIMEOUT
@@ -35,7 +37,8 @@ class UploadProtocol:
 
                 if response.startswith("UPLOAD_OK:"):
                     new_port = int(response.split(":")[1])
-                    print(f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}.")
+                    logger.info(f"Handshake accepted. Server assigned port {new_port}")
+                    logger.debug(f"Using protocol: {protocol}")
                     self.args.port = new_port
                     
                     if protocol == "stop-and-wait":
@@ -45,14 +48,14 @@ class UploadProtocol:
                         handler = SelectiveRepeatProtocol(self.args, self.socket)
                         return handler.send_upload(file_size)
                 else:
-                    print(f"CLIENTE: El servidor rechazó el saludo con: {response}")
+                    logger.error(f"Server rejected handshake: {response}")
                     return False
 
             except socket.timeout:
                 retries += 1
                 current_timeout *= 2
-                print(f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s")
+                logger.debug(f"Handshake timeout, retrying... ({retries}/{MAX_RETRIES}) with timeout {current_timeout:.2f}s")
         
-        print("CLIENTE: No se pudo establecer conexión con el servidor.")
+        logger.error("Could not establish connection with server")
         return False
 

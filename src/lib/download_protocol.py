@@ -2,6 +2,7 @@ import socket
 import os
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
+from lib.logger import get_logger
 
 TIMEOUT = 2
 BUFFER = 1024
@@ -13,12 +14,13 @@ class DownloadProtocol:
         self.socket = None
 
     def download_file(self):
+        logger = get_logger()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         
         handshake_msg = f"DOWNLOAD_CLIENT:{protocol}:{self.args.name}"
-        print(f"CLIENTE: Enviando solicitud: {handshake_msg}")
+        logger.debug(f"Sending download request: {handshake_msg}")
 
         retries = 0
         current_timeout = TIMEOUT
@@ -33,20 +35,21 @@ class DownloadProtocol:
                     # Formato: "DOWNLOAD_OK:new_port:filesize"
                     parts = response.split(":")
                     if len(parts) != 3:
-                        print(f"CLIENTE: Respuesta inválida del servidor: {response}")
+                        logger.error(f"Invalid server response: {response}")
                         continue
                     try:
                         new_port = int(parts[1])
                         filesize = int(parts[2])
                     except ValueError:
-                        print(f"CLIENTE: Respuesta inválida del servidor: {response}")
+                        logger.error(f"Invalid server response: {response}")
                         continue
 
                     if filesize <= 0:
-                        print(f"CLIENTE: Tamaño de archivo inválido: {filesize}")
+                        logger.error(f"Invalid file size: {filesize}")
                         return False
                     
-                    print(f"CLIENTE: Descarga aceptada. Puerto {new_port}, archivo {filesize} bytes.")
+                    logger.info(f"Download accepted. Server assigned port {new_port}")
+                    logger.debug(f"File size: {filesize} bytes, Protocol: {protocol}")
                     self.args.port = new_port
                     
                     if protocol == "stop-and-wait":
@@ -57,20 +60,20 @@ class DownloadProtocol:
                         #return handler.receive_download(filesize)
                         pass
                 elif response == "ERROR:FileNotFound":
-                    print("CLIENTE: El archivo solicitado no existe en el servidor.")
+                    logger.error("Requested file does not exist on server")
                     if self.socket:
                         self.socket.close()
                     return False
                 else:
-                    print(f"CLIENTE: El servidor rechazó la solicitud: {response}")
+                    logger.error(f"Server rejected request: {response}")
                     return False
 
             except socket.timeout:
                 retries += 1
                 current_timeout *= 2
-                print(f"CLIENTE: Timeout en solicitud, reintentando... ({retries}/{MAX_RETRIES})")
+                logger.debug(f"Request timeout, retrying... ({retries}/{MAX_RETRIES})")
         
-        print("CLIENTE: No se pudo establecer conexión con el servidor.")
+        logger.error("Could not establish connection with server")
         if self.socket:
             self.socket.close()
         return False

@@ -1,6 +1,7 @@
 import socket
 import os
 import time
+from lib.logger import get_logger
 
 CLIENT_TIMEOUT_START = 0.02 
 CLIENT_TIMEOUT_MAX = 0.5   
@@ -29,7 +30,8 @@ class StopAndWaitProtocol:
             print() 
 
     def send_upload(self, file_size):
-        print(f"CLIENTE: Iniciando envío de {file_size:,} bytes ({file_size/1024/1024:.1f} MB)...")
+        logger = get_logger()
+        logger.info(f"Starting upload of {file_size:,} bytes ({file_size/1024/1024:.1f} MB)")
         
         start_time = time.time()
         
@@ -96,16 +98,16 @@ class StopAndWaitProtocol:
                         packet = f"{seq_num}:".encode() + chunk
 
                 if not ack_received:
-                    print(f"ERROR: Paquete {seq_num} falló después de {MAX_RETRIES} intentos")
+                    logger.error(f"Packet {seq_num} failed after {MAX_RETRIES} attempts")
                     return False
                     
                 bytes_sent += bytes_read
                 seq_num = 1 - seq_num
             
             self.show_progress_bar(bytes_sent, file_size)
-            print(f"\n--- UPLOAD COMPLETADO ---")
+            logger.info("Upload completed successfully")
             elapsed_total = time.time() - start_time
-            print(f"Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
+            logger.info(f"File sent: {bytes_sent:,} bytes in {elapsed_total:.1f}s")
             return True
 
     def receive_upload(self, addr, filename, filesize):

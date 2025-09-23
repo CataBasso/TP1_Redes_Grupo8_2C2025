@@ -3,6 +3,7 @@ import socket
 import time
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
+from lib.logger import get_logger
 
 
 # Network Configuration
@@ -95,29 +96,33 @@ class ServerProtocol:
             raise ValueError(f"Invalid file info: {e}")
 
     def handle_upload(self, addr, protocol, filename, filesize):
+        logger = get_logger()
         try:
             client_socket, client_port = self._setup_client_socket()
-            print(f"SERVIDOR: Hilo para {addr} en puerto temporal {client_port}")
+            logger.debug(f"Thread for {addr} on temporary port {client_port}")
 
             # Enviamos la única confirmación con el nuevo puerto
             response = f"UPLOAD_OK:{client_port}"
             client_socket.sendto(response.encode(), addr)
+            logger.verbose_info(f"Sent upload confirmation to {addr} with port {client_port}")
             
             # Obtenemos el manejador de protocolo y procedemos directamente a recibir el archivo
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
+            logger.debug(f"Using protocol handler: {protocol}")
             
             # Llamamos a la versión refactorizada de receive_upload
             success, _ = protocol_handler.receive_upload(addr, filename, filesize)
 
             if success:
-                print(f"File '{filename}' received successfully from {addr}")
+                logger.info(f"File '{filename}' received successfully from {addr}")
             else:
-                print(f"File transfer from {addr} failed.")
+                logger.error(f"File transfer from {addr} failed")
 
         except Exception as e:
-            print(f"Error fatal en el hilo de {addr}: {e}")
+            logger.error(f"Fatal error in thread for {addr}: {e}")
 
     def handle_download(self, addr, protocol, filename):
+        logger = get_logger()
         try:
             # Verificar que el archivo existe
             storage_path = self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
@@ -125,29 +130,30 @@ class ServerProtocol:
             
             if not os.path.isfile(file_path):
                 self.main_socket.sendto(b"ERROR:FileNotFound", addr)
-                print(f"SERVIDOR: El archivo '{filename}' no existe. Enviando ERROR a {addr}.")
+                logger.error(f"File '{filename}' does not exist. Sending ERROR to {addr}")
                 return
 
             filesize = os.path.getsize(file_path)
-            print(f"SERVIDOR: Archivo '{filename}' encontrado ({filesize} bytes)")
+            logger.debug(f"File '{filename}' found ({filesize} bytes)")
             
             client_socket, client_port = self._setup_client_socket()
-            print(f"SERVIDOR: Socket temporal creado en puerto {client_port}")
+            logger.debug(f"Temporary socket created on port {client_port}")
 
             # Enviamos la única confirmación con el nuevo puerto
             response = f"DOWNLOAD_OK:{client_port}:{filesize}"
             
             self.main_socket.sendto(response.encode(), addr)
-            print(f"SERVIDOR: Handshake enviado por socket principal: {response}")
+            logger.verbose_info(f"Handshake sent via main socket: {response}")
 
             # Obtenemos el manejador de protocolo y mandamos el archivo
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
+            logger.debug(f"Using protocol handler: {protocol}")
             success = protocol_handler.send_download(addr, filename, filesize)
             
             if success:
-                print(f"File '{filename}' sent successfully to {addr}")
+                logger.info(f"File '{filename}' sent successfully to {addr}")
             else:
-                print(f"File transfer to {addr} failed.")
+                logger.error(f"File transfer to {addr} failed")
 
         except Exception as e:
             print(f"Error fatal en descarga para {addr}: {e}")
