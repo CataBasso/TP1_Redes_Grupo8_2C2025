@@ -46,6 +46,7 @@
 import os
 import socket
 import time
+from lib.logger import get_logger
 
 BUFFER = 1024
 RECEIVE_BUFFER = BUFFER + 32
@@ -86,7 +87,8 @@ class SelectiveRepeatProtocol:
                 pkts = {}  # Diccionario: {seq_num: (packet, sent_time, retries)}
                 estimated_rtt = 0.001
 
-                print(f"CLIENTE: Enviando archivo ({file_size:,} bytes) con ventana {WINDOW_SIZE}")
+                logger = get_logger()
+                logger.info(f"Sending file ({file_size:,} bytes) with window size {WINDOW_SIZE}")
                 start_time = time.time()
 
                 while bytes_sent < file_size or pkts:
@@ -113,10 +115,10 @@ class SelectiveRepeatProtocol:
 
                         if current_time - sent_time > current_timeout: # Si se envio hace mucho, retransmitir
                             if retries >= MAX_RETRIES:  # Si supera reintentos, abortar
-                                print(f"[ERROR]: Paquete {seq_num} falló después de {MAX_RETRIES} reintentos")
+                                logger.error(f"Packet {seq_num} failed after {MAX_RETRIES} retries")
                                 return False
                             
-                            #print(f"[TIMEOUT]: Reenviando paquete {seq_num} (intento {new_retries}) ]")
+                            logger.debug(f"Timeout: Retransmitting packet {seq_num} (attempt {retries + 1})")
                             self.socket.sendto(packet, (self.args.host, self.args.port))
                             pkts[seq_num] = (packet, current_time, retries + 1)
 
