@@ -63,6 +63,19 @@ class SelectiveRepeatProtocol:
         self.args = args
         self.socket = sock
 
+    def show_progress_bar(self, current, total, bar_length=50):
+        """Muestra una barra de progreso ASCII"""
+        progress = current / total
+        filled_length = int(bar_length * progress)
+        
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        percent = progress * 100
+        
+        print(f'\r[{bar}] {percent:.1f}% ({current}/{total})', end='', flush=True)
+        
+        if progress >= 1.0:
+            print() 
+
     def send_upload(self, file_size):
         """Cliente: Envía archivo con ventana deslizante"""
         try:
@@ -126,9 +139,8 @@ class SelectiveRepeatProtocol:
                                     base_num += 1
                                 
                                 # Mostrar progreso
-                                if base_num % 20 == 0:
-                                    progress = (base_num * BUFFER / file_size) * 100
-                                    print(f"[PROGRESO: {progress:4.1f}% ]")
+                                if base_num % 2 == 0:
+                                    self.show_progress_bar(base_num * BUFFER, file_size)
     
                     except socket.timeout:
                         pass
@@ -214,10 +226,9 @@ class SelectiveRepeatProtocol:
                         self.socket.sendto(ack_msg, client_addr)
  
                     # ← MOSTRAR PROGRESO cada 2 segundos
-                    if time.time() - start_time > 2:
-                        progress = (bytes_received / filesize) * 100
-                        print(f"[PROGRESO: {progress:5.1f}% - {bytes_received:,}/{filesize:,} bytes]")
-   
+                    if time.time() - start_time > 1:
+                        self.show_progress_bar(bytes_received, filesize)
+
                     # ← VERIFICAR SI TERMINAMOS
                     if bytes_received >= filesize:
                         print(f"SERVIDOR: Archivo completo recibido: {bytes_received:,} bytes")
