@@ -53,7 +53,7 @@ class ServerProtocol:
     def set_main_socket(self, socket):
         self.main_socket = socket
 
-    def _setup_client_socket(self, addr):
+    def _setup_client_socket(self):
         """Configura el socket temporal del cliente"""
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.bind(("", 0))
@@ -96,7 +96,7 @@ class ServerProtocol:
 
     def handle_upload(self, addr, protocol, filename, filesize):
         try:
-            client_socket, client_port = self._setup_client_socket(addr)
+            client_socket, client_port = self._setup_client_socket()
             print(f"SERVIDOR: Hilo para {addr} en puerto temporal {client_port}")
 
             # Enviamos la única confirmación con el nuevo puerto
@@ -131,7 +131,7 @@ class ServerProtocol:
             filesize = os.path.getsize(file_path)
             print(f"SERVIDOR: Archivo '{filename}' encontrado ({filesize} bytes)")
             
-            client_socket, client_port = self._setup_client_socket(addr)
+            client_socket, client_port = self._setup_client_socket()
             print(f"SERVIDOR: Socket temporal creado en puerto {client_port}")
 
             # Enviamos la única confirmación con el nuevo puerto

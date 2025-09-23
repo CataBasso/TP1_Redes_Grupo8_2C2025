@@ -42,8 +42,8 @@ class UploadProtocol:
                         handler = StopAndWaitProtocol(self.args, self.socket)
                         return handler.send_upload(file_size)
                     elif protocol == "selective-repeat":
-                        # ... selective repeat ...
-                        pass
+                        handler = SelectiveRepeatProtocol(self.args, self.socket)
+                        return handler.send_upload(file_size)
                 else:
                     print(f"CLIENTE: El servidor rechazó el saludo con: {response}")
                     return False
