@@ -1,7 +1,7 @@
 import socket
 import os
 import time
-
+import logging
 CLIENT_TIMEOUT_START = 0.02 
 CLIENT_TIMEOUT_MAX = 0.5   
 BUFFER = 800 #buffer para mandar paquetes               
@@ -22,14 +22,15 @@ class StopAndWaitProtocol:
         
         bar = '█' * filled_length + '-' * (bar_length - filled_length)
         percent = progress * 100
-        
-        print(f'\r[{bar}] {percent:.1f}% ({current}/{total})', end='', flush=True)
-        
+
+
+        logging.info(f'\r[{bar}] {percent:.1f}% ({current}/{total})')
+
         if progress >= 1.0:
-            print() 
+            logging.info("")
 
     def send_upload(self, file_size):
-        print(f"CLIENTE: Iniciando envío de {file_size:,} bytes ({file_size/1024/1024:.1f} MB)...")
+        logging.info(f"CLIENTE: Iniciando envío de {file_size:,} bytes ({file_size/1024/1024:.1f} MB)...")
         
         start_time = time.time()
         
@@ -61,59 +62,60 @@ class StopAndWaitProtocol:
                 retries = 0
                 
                 while not ack_received and retries < MAX_RETRIES: 
+                    logging.debug(f"Enviando paquete seq={seq_num}, intento={retries+1}, bytes={len(packet)}")
                     self.socket.sendto(packet, (self.args.host, self.args.port))
                     send_time = time.monotonic()
-                    
                     try:
                         self.socket.settimeout(current_timeout)
                         data, addr = self.socket.recvfrom(BUFFER_ACK)
                         recv_time = time.monotonic()
-                        
+                        logging.debug(f"Recibido ACK de {addr}: {data}")
                         # RTT measurement
                         sample_rtt = recv_time - send_time
                         if estimated_rtt is None:
                             estimated_rtt = sample_rtt
                         else:
                             estimated_rtt = (0.7 * estimated_rtt) + (0.3 * sample_rtt)
-                        
                         # Ajustar timeout
                         current_timeout = max(estimated_rtt * 2.5, CLIENT_TIMEOUT_START)
                         current_timeout = min(current_timeout, CLIENT_TIMEOUT_MAX)
-
                         response = data.decode().strip()
+                        logging.debug(f"Respuesta recibida: {response}")
                         if response == f"ACK:{seq_num}":
                             ack_received = True
                             successful_packets += 1
+                            logging.debug(f"ACK correcto para seq={seq_num}")
                             break
-                            
+                        else:
+                            logging.debug(f"ACK incorrecto para seq={seq_num}: {response}")
                     except socket.timeout:
                         retries += 1
                         current_timeout = min(current_timeout * 1.3, CLIENT_TIMEOUT_MAX)
-                        
+                        logging.debug(f"Timeout esperando ACK para seq={seq_num}, reintentando (intento {retries})")
                         # Releer chunk desde el archivo
                         file.seek(file_position)
                         chunk = file.read(bytes_to_read)
                         packet = f"{seq_num}:".encode() + chunk
 
                 if not ack_received:
-                    print(f"ERROR: Paquete {seq_num} falló después de {MAX_RETRIES} intentos")
+                    logging.error(f"Paquete {seq_num} falló después de {MAX_RETRIES} intentos")
                     return False
                     
                 bytes_sent += bytes_read
                 seq_num = 1 - seq_num
             
             self.show_progress_bar(bytes_sent, file_size)
-            print(f"\n--- UPLOAD COMPLETADO ---")
+            logging.info(f"\n--- UPLOAD COMPLETADO ---")
             elapsed_total = time.time() - start_time
-            print(f"Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
+            logging.info(f"Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
             return True
 
     def receive_upload(self, addr, filename, filesize):
         storage_path = self.args.storage if self.args.storage else "storage"
         os.makedirs(storage_path, exist_ok=True)
         file_path = os.path.join(storage_path, filename)
-        
-        print(f"SERVIDOR: Recibiendo '{filename}' ({filesize:,} bytes)...")
+
+        logging.info(f"SERVIDOR: Recibiendo '{filename}' ({filesize:,} bytes)...")
         start_time = time.time()
         
         self.socket.settimeout(SERVER_TIMEOUT)
@@ -129,45 +131,43 @@ class StopAndWaitProtocol:
                     packet_count += 1
                     
                     if b":" not in packet:
-                        print(f"<-- [ERROR] Paquete sin formato ':' - ignorando")
+                        logging.error(f"<-- [ERROR] Paquete sin formato ':' - ignorando")
                         continue
-                        
                     seq_str, chunk = packet.split(b":", 1)
                     seq_received = int(seq_str)
-
+                    logging.debug(f"Recibido paquete seq={seq_received}, bytes={len(chunk)}")
                     if packet_count == 1 or packet_count % 200 == 0 or bytes_received + len(chunk) >= filesize:
                         progress = ((bytes_received + len(chunk)) / filesize) * 100
                         elapsed = time.time() - start_time
                         if elapsed > 0:
                             self.show_progress_bar(bytes_received + len(chunk), filesize)
-
                     if seq_received == seq_expected:
                         received_file.write(chunk)
                         bytes_received += len(chunk)
                         last_correct_seq = seq_received
+                        logging.debug(f"ACK enviado para seq={seq_received}")
                         self.socket.sendto(f"ACK:{seq_received}".encode(), addr)
                         seq_expected = 1 - seq_expected
-                        
                         if bytes_received >= filesize:
                             break
-                            
                     else:
                         # Paquete duplicado - reenviar ACK
+                        logging.debug(f"Paquete duplicado seq={seq_received}, reenviando ACK para seq={last_correct_seq}")
                         if last_correct_seq != -1:
                             self.socket.sendto(f"ACK:{last_correct_seq}".encode(), addr)
                             
                 except socket.timeout:
-                    print(f"<-- [TIMEOUT] {SERVER_TIMEOUT}s - Cliente desconectado")
+                    logging.warning(f"<-- [TIMEOUT] {SERVER_TIMEOUT}s - Cliente desconectado")
                     return False, filename
                 except (ValueError, UnicodeDecodeError) as e:
-                    print(f"<-- [ERROR] {type(e).__name__} - ignorando paquete")
+                    logging.error(f"<-- [ERROR] {type(e).__name__} - ignorando paquete")
                     continue
 
         elapsed_total = time.time() - start_time
-        
-        print(f"\n--- RECEPCIÓN COMPLETADA ---")
-        print(f"Archivo: {filename} ({bytes_received:,} bytes)")
-        print(f"Tiempo: {elapsed_total:.1f}s")
+
+        logging.info(f"\n--- RECEPCIÓN COMPLETADA ---")
+        logging.info(f"Archivo: {filename} ({bytes_received:,} bytes)")
+        logging.info(f"Tiempo: {elapsed_total:.1f}s")
 
         # Esperar posibles paquetes duplicados antes de cerrar
         end_time = time.time() + 2
@@ -188,9 +188,9 @@ class StopAndWaitProtocol:
     def send_download(self, addr, filename, filesize):
         storage_path = self.args.storage if self.args.storage else "storage"
         file_path = os.path.join(storage_path, filename)
-        
-        print(f"SERVIDOR: Enviando archivo '{filename}' ({filesize:,} bytes) a {addr}")
-        
+
+        logging.info(f"SERVIDOR: Enviando archivo '{filename}' ({filesize:,} bytes) a {addr}")
+
         start_time = time.time()
         
         with open(file_path, "rb") as file:
@@ -254,7 +254,7 @@ class StopAndWaitProtocol:
                         packet = f"{seq_num}:".encode() + chunk
 
                 if not ack_received:
-                    print(f"ERROR: Paquete {seq_num} falló después de {MAX_RETRIES} intentos")
+                    logging.error(f"Paquete {seq_num} falló después de {MAX_RETRIES} intentos")
                     return False
                     
                 bytes_sent += bytes_read
@@ -262,9 +262,9 @@ class StopAndWaitProtocol:
 
             self.show_progress_bar(bytes_sent, filesize)
             elapsed_total = time.time() - start_time
-            print(f"\n--- DOWNLOAD COMPLETADO ---")
-            print(f"Archivo enviado: {bytes_sent:,} bytes")
-            print(f"Tiempo: {elapsed_total:.1f}s")
+            logging.info(f"\n--- DOWNLOAD COMPLETADO ---")
+            logging.info(f"Archivo enviado: {bytes_sent:,} bytes")
+            logging.info(f"Tiempo: {elapsed_total:.1f}s")
             return True
 
     def receive_download(self, filesize):
@@ -272,10 +272,10 @@ class StopAndWaitProtocol:
             file_path = os.path.join(self.args.dst, self.args.name)
         else:
             file_path = self.args.dst
-            
-        print(f"CLIENTE: Recibiendo '{self.args.name}' ({filesize:,} bytes)...")
-        print(f"CLIENTE: Guardando en: {file_path}")
-        
+
+        logging.info(f"CLIENTE: Recibiendo '{self.args.name}' ({filesize:,} bytes)...")
+        logging.info(f"CLIENTE: Guardando en: {file_path}")
+
         start_time = time.time()
         self.socket.settimeout(SERVER_TIMEOUT)
         
@@ -291,7 +291,7 @@ class StopAndWaitProtocol:
                     packet_count += 1
                     
                     if b":" not in packet:
-                        print(f"<-- [ERROR] Paquete sin formato ':' - ignorando")
+                        logging.error(f"<-- [ERROR] Paquete sin formato ':' - ignorando")
                         continue
                         
                     seq_str, chunk = packet.split(b":", 1)
@@ -319,18 +319,18 @@ class StopAndWaitProtocol:
                             self.socket.sendto(f"ACK:{last_correct_seq}".encode(), server_addr)
                             
                 except socket.timeout:
-                    print(f"<-- [TIMEOUT] {SERVER_TIMEOUT}s - Servidor desconectado")
+                    logging.warning(f"<-- [TIMEOUT] {SERVER_TIMEOUT}s - Servidor desconectado")
                     return False
                 except (ValueError, UnicodeDecodeError) as e:
-                    print(f"<-- [ERROR] {type(e).__name__} - ignorando paquete")
+                    logging.error(f"<-- [ERROR] {type(e).__name__} - ignorando paquete")
                     continue
 
         elapsed_total = time.time() - start_time
-        
-        print(f"\n--- DESCARGA COMPLETADA ---")
-        print(f"Archivo: {self.args.name} ({bytes_received:,} bytes)")
-        print(f"Tiempo: {elapsed_total:.1f}s")
-        print(f"Guardado en: {file_path}")
+
+        logging.info(f"\n--- DESCARGA COMPLETADA ---")
+        logging.info(f"Archivo: {self.args.name} ({bytes_received:,} bytes)")
+        logging.info(f"Tiempo: {elapsed_total:.1f}s")
+        logging.info(f"Guardado en: {file_path}")
 
         end_time = time.time() + 2
         while time.time() < end_time:
