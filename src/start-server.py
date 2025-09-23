@@ -25,6 +25,8 @@ def main():
     print(f"SERVIDOR-MAIN Esuchando: {args.host}:{args.port}")
 
     protocol = ServerProtocol(args)
+    protocol.set_main_socket(skt)
+    
     while True:
         data, addr = skt.recvfrom(BUFFER)
         try:

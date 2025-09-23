@@ -48,6 +48,10 @@ class FileInfo:
 class ServerProtocol:
     def __init__(self, args):
         self.args = args
+        self.main_socket = None
+    
+    def set_main_socket(self, socket):
+        self.main_socket = socket
 
     def _setup_client_socket(self, addr):
         """Configura el socket temporal del cliente"""
@@ -115,25 +119,27 @@ class ServerProtocol:
 
     def handle_download(self, addr, protocol, filename):
         try:
-            client_socket, client_port = self._setup_client_socket(addr)
-            print(f"SERVIDOR: Hilo para {addr} en puerto temporal {client_port}")
-
             # Verificar que el archivo existe
             storage_path = self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
             file_path = os.path.join(storage_path, filename)
             
             if not os.path.isfile(file_path):
-                client_socket.sendto(b"ERROR:FileNotFound", addr)
+                self.main_socket.sendto(b"ERROR:FileNotFound", addr)
                 print(f"SERVIDOR: El archivo '{filename}' no existe. Enviando ERROR a {addr}.")
                 return
 
             filesize = os.path.getsize(file_path)
             print(f"SERVIDOR: Archivo '{filename}' encontrado ({filesize} bytes)")
+            
+            client_socket, client_port = self._setup_client_socket(addr)
+            print(f"SERVIDOR: Socket temporal creado en puerto {client_port}")
 
             # Enviamos la única confirmación con el nuevo puerto
             response = f"DOWNLOAD_OK:{client_port}:{filesize}"
-            client_socket.sendto(response.encode(), addr)
             
+            self.main_socket.sendto(response.encode(), addr)
+            print(f"SERVIDOR: Handshake enviado por socket principal: {response}")
+
             # Obtenemos el manejador de protocolo y mandamos el archivo
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
             success = protocol_handler.send_download(addr, filename, filesize)

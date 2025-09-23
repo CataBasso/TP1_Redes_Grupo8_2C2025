@@ -6,7 +6,7 @@ CLIENT_TIMEOUT_START = 0.02
 CLIENT_TIMEOUT_MAX = 0.5   
 BUFFER = 800 #buffer para mandar paquetes               
 PACKET_BUFFER = BUFFER + 50 #buffer para recibir paquetes de datos
-SERVER_TIMEOUT = 60.0     
+SERVER_TIMEOUT = 120.0    
 MAX_RETRIES = 20 
 BUFFER_ACK = 64 #buffer para recibir ACKs
 
@@ -104,7 +104,6 @@ class StopAndWaitProtocol:
         file_path = os.path.join(storage_path, filename)
         
         print(f"SERVIDOR: Recibiendo '{filename}' ({filesize:,} bytes)...")
-        total_chunks = (filesize + BUFFER - 1) // BUFFER
         start_time = time.time()
         
         self.socket.settimeout(SERVER_TIMEOUT)
@@ -155,7 +154,6 @@ class StopAndWaitProtocol:
                     continue
 
         elapsed_total = time.time() - start_time
-        rate = (bytes_received / 1024 / 1024) / max(elapsed_total, 0.001)
         
         print(f"\n--- RECEPCIÓN COMPLETADA ---")
         print(f"Archivo: {filename} ({bytes_received:,} bytes)")
@@ -213,8 +211,8 @@ class StopAndWaitProtocol:
                 retries = 0
                 
                 while not ack_received and retries < MAX_RETRIES: 
-                    if retries > 0:
-                        print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
+                    #if retries > 0:
+                    #    print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
                     
                     self.socket.sendto(packet, addr)
                     send_time = time.monotonic()
@@ -257,7 +255,9 @@ class StopAndWaitProtocol:
                 seq_num = 1 - seq_num
 
             elapsed_total = time.time() - start_time
-            print(f"SERVIDOR: Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
+            print(f"\n--- DOWNLOAD COMPLETADO ---")
+            print(f"Archivo enviado: {bytes_sent:,} bytes")
+            print(f"Tiempo: {elapsed_total:.1f}s")
             return True
 
     def receive_download(self, filesize):
@@ -280,7 +280,7 @@ class StopAndWaitProtocol:
 
             while bytes_received < filesize:
                 try:
-                    packet, _ = self.socket.recvfrom(PACKET_BUFFER)
+                    packet, server_addr = self.socket.recvfrom(PACKET_BUFFER)
                     packet_count += 1
                     
                     if b":" not in packet:
@@ -301,7 +301,7 @@ class StopAndWaitProtocol:
                         received_file.write(chunk)
                         bytes_received += len(chunk)
                         last_correct_seq = seq_received
-                        self.socket.sendto(f"ACK:{seq_received}".encode(), (self.args.host, self.args.port))
+                        self.socket.sendto(f"ACK:{seq_received}".encode(), server_addr)
                         seq_expected = 1 - seq_expected
                         
                         if bytes_received >= filesize:
@@ -310,7 +310,7 @@ class StopAndWaitProtocol:
                     else:
                         # Paquete duplicado - reenviar último ACK correcto
                         if last_correct_seq != -1:
-                            self.socket.sendto(f"ACK:{last_correct_seq}".encode(), (self.args.host, self.args.port))
+                            self.socket.sendto(f"ACK:{last_correct_seq}".encode(), server_addr)
                             
                 except socket.timeout:
                     print(f"<-- [TIMEOUT] {SERVER_TIMEOUT}s - Servidor desconectado")
@@ -325,5 +325,18 @@ class StopAndWaitProtocol:
         print(f"Archivo: {self.args.name} ({bytes_received:,} bytes)")
         print(f"Tiempo: {elapsed_total:.1f}s")
         print(f"Guardado en: {file_path}")
+
+        end_time = time.time() + 2
+        while time.time() < end_time:
+            try:
+                self.socket.settimeout(0.5)
+                packet, _ = self.socket.recvfrom(PACKET_BUFFER)
+                if b":" in packet:
+                    seq_str, chunk = packet.split(b":", 1)
+                    seq_received = int(seq_str)
+                    if seq_received == (1 - seq_expected):
+                        self.socket.sendto(f"ACK:{seq_received}".encode(), server_addr)
+            except:
+                continue
 
         return True
