@@ -15,6 +15,19 @@ class StopAndWaitProtocol:
         self.args = args
         self.socket = client_socket
 
+    def show_progress_bar(self, current, total, bar_length=50):
+        """Muestra una barra de progreso ASCII"""
+        progress = current / total
+        filled_length = int(bar_length * progress)
+        
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        percent = progress * 100
+        
+        print(f'\r[{bar}] {percent:.1f}% ({current}/{total})', end='', flush=True)
+        
+        if progress >= 1.0:
+            print() 
+
     def send_upload(self, file_size):
         print(f"CLIENTE: Iniciando envío de {file_size:,} bytes ({file_size/1024/1024:.1f} MB)...")
         
@@ -39,19 +52,15 @@ class StopAndWaitProtocol:
                 if bytes_read == 0: break
 
                 if packet_count == 1 or packet_count % 100 == 0:
-                    progress = (bytes_sent / file_size) * 100
                     elapsed = time.time() - start_time
                     if elapsed > 0:
-                        print(f"[PROGRESO: [{packet_count:4d}] - {progress:4.1f}% ]")
+                        self.show_progress_bar(bytes_sent, file_size)
 
                 packet = f"{seq_num}:".encode() + chunk
                 ack_received = False
                 retries = 0
                 
                 while not ack_received and retries < MAX_RETRIES: 
-                    # if retries > 0:
-                    #     print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
-                    
                     self.socket.sendto(packet, (self.args.host, self.args.port))
                     send_time = time.monotonic()
                     
@@ -93,6 +102,7 @@ class StopAndWaitProtocol:
                 bytes_sent += bytes_read
                 seq_num = 1 - seq_num
             
+            self.show_progress_bar(bytes_sent, file_size)
             print(f"\n--- UPLOAD COMPLETADO ---")
             elapsed_total = time.time() - start_time
             print(f"Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
@@ -129,7 +139,7 @@ class StopAndWaitProtocol:
                         progress = ((bytes_received + len(chunk)) / filesize) * 100
                         elapsed = time.time() - start_time
                         if elapsed > 0:
-                            print(f"<-- [{packet_count:4d}] {progress:5.1f}% - Paquete {seq_received}")
+                            self.show_progress_bar(bytes_received + len(chunk), filesize)
 
                     if seq_received == seq_expected:
                         received_file.write(chunk)
@@ -201,19 +211,15 @@ class StopAndWaitProtocol:
                 if bytes_read == 0: break
 
                 if packet_count == 1 or packet_count % 100 == 0:
-                    progress = (bytes_sent / filesize) * 100
                     elapsed = time.time() - start_time
                     if elapsed > 0:
-                        print(f"[PROGRESO: [{packet_count:4d}] - {progress:4.1f}% ]")
+                        self.show_progress_bar(bytes_sent, filesize)
 
                 packet = f"{seq_num}:".encode() + chunk
                 ack_received = False
                 retries = 0
                 
-                while not ack_received and retries < MAX_RETRIES: 
-                    #if retries > 0:
-                    #    print(f"    [REINTENTO {retries}/{MAX_RETRIES}] Paquete {seq_num}")
-                    
+                while not ack_received and retries < MAX_RETRIES:   
                     self.socket.sendto(packet, addr)
                     send_time = time.monotonic()
                     
@@ -254,6 +260,7 @@ class StopAndWaitProtocol:
                 bytes_sent += bytes_read
                 seq_num = 1 - seq_num
 
+            self.show_progress_bar(bytes_sent, filesize)
             elapsed_total = time.time() - start_time
             print(f"\n--- DOWNLOAD COMPLETADO ---")
             print(f"Archivo enviado: {bytes_sent:,} bytes")
@@ -292,10 +299,9 @@ class StopAndWaitProtocol:
 
                     # Progreso cada 200 paquetes
                     if packet_count == 1 or packet_count % 200 == 0 or bytes_received + len(chunk) >= filesize:
-                        progress = ((bytes_received + len(chunk)) / filesize) * 100
                         elapsed = time.time() - start_time
                         if elapsed > 0:
-                            print(f"<-- [{packet_count:4d}] {progress:5.1f}% - Paquete {seq_received}")
+                            self.show_progress_bar(bytes_received + len(chunk), filesize)
 
                     if seq_received == seq_expected:
                         received_file.write(chunk)
