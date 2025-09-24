@@ -1,24 +1,85 @@
-TP1 Redes - File Transfer
+# TP1 Redes - File Transfer
 
-levantar servidor: python3 start-server.py -H 127.0.0.1 -p 5000
+## Servidor: 
 
-levantar upload: python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name>
+```bash
+# Normal mode
+python3 start-server.py -H 127.0.0.1 -p 5000
 
-    con selective_repeat : python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name>  -r selective-repeat
+# Verbose mode
+python3 start-server.py  -v -H 127.0.0.1 -p 5000
 
-    con stop and wait:  python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r stop-and-wait
+# Quiet mode
+python3 start-server.py -q -H 127.0.0.1 -p 5000
+```
+## Cliente:
+### *Upload* 
+#### Si no se especifica " -r " el protocolo por default sera el 'Stop & Wait'
 
-levantar upload: python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name>
+#### **Stop & Wait**
+```bash
+# Normal mode
+python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r stop-and-wait
 
-levantar download: python3 download.py -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> 
+# Verbose mode
+python3 upload.py -v -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r stop-and-wait
 
-las IPs 10.0.0.1 y 10.0.0.2 son las que se utilizan en xterm
+# Quiet mode
+python3 upload.py -q -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r stop-and-wait
+```
+#### **Selective Repeat**
+```bash
+# Normal mode
+python3 upload.py -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r selective-repeat
 
-levantar mininet:
-> sudo mn --topo single,2 --link tc,loss=10
+# Verbose mode
+python3 upload.py -v -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r selective-repeat
 
-dentro de mininet ejecutar:
-> xterm h1 h2 
- y se abren dos terminales\
+# Quiet mode
+python3 upload.py -q -H 127.0.0.1 -p 5000 -s <file_path> -n <file_name> -r selective-repeat
+```
+### *Download*
+#### **Stop & Wait**
+```bash
+# Normal mode
+python3 download.py -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> 
 
-despues en la terminal h1 levantas el server y en h2 el cliente con puerto 10.0.0.1 en ambos casos
+# Verbose mode
+python3 download.py -v -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> 
+
+# Quiet mode
+python3 download.py -q -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> 
+```
+#### **Selective Repeat**
+```bash
+# Normal mode
+python3 download.py -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> -r selective-repeat
+
+# Verbose mode
+python3 download.py -v -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> -r selective-repeat 
+
+# Quiet mode
+python3 download.py -q -H 127.0.0.1 -p 5000 -n <file_name_on_server> -d <local_destination_path> -r selective-repeat 
+```
+
+## Mininet
+
+#### Para correr el programa con *Mininet* y verificar que los protocolos implementados garantizan la transmision a pesar de una posible perdida de paquetes con un porcentaje del 10%
+
+```bash
+# Instalar dependencias
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git vim python3 python3-pip
+
+# Instalar mininet
+sudo apt install mininet
+
+# Abrir mininet
+sudo mn --topo single,2 --link tc,loss=10
+
+# Adentro de mininet
+mininet > xterm h1 h2
+```
+##### Al ejecutar esos comandos se abriran dos terminales de *mininet*, y seguir los pasos anteriores para ejecutar tanto el servidor y el/los clientes cambiando los host a
+- 10.0.0.1 ó 10.0.0.2
+##### ya que son las que utiliza *xterm*
