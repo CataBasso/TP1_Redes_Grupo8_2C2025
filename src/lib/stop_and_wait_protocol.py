@@ -2,13 +2,16 @@ import socket
 import os
 import time
 import logging
-CLIENT_TIMEOUT_START = 0.02 
-CLIENT_TIMEOUT_MAX = 0.5   
-BUFFER = 800 #buffer para mandar paquetes               
-PACKET_BUFFER = BUFFER + 50 #buffer para recibir paquetes de datos
-SERVER_TIMEOUT = 120.0    
+
+CLIENT_TIMEOUT_START = 0.02
+CLIENT_TIMEOUT_MAX = 0.5
+SERVER_TIMEOUT = 120.0
+
+BUFFER = 800  # buffer para mandar paquetes
+PACKET_BUFFER = BUFFER + 50  # buffer para recibir paquetes de datos
+BUFFER_ACK = 64  # buffer para recibir ACKs
+
 MAX_RETRIES = 20 
-BUFFER_ACK = 64 #buffer para recibir ACKs
 
 class StopAndWaitProtocol:
     def __init__(self, args, client_socket: socket.socket):

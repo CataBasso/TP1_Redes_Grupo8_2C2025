@@ -1,7 +1,7 @@
-import os
 import sys
 import time
 import logging
+
 from lib.download_protocol import DownloadProtocol
 from lib.parser import get_parser
 

@@ -1,7 +1,7 @@
 import logging
-import os
 import sys
 import time
+
 from lib.upload_protocol import UploadProtocol
 from lib.parser import get_parser
 

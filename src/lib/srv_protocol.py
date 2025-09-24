@@ -1,7 +1,7 @@
 import os
 import socket
-import time
 import logging
+
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 
@@ -206,6 +206,6 @@ class ServerProtocol:
                 filename = parts[2]
                 self.handle_download(addr, protocol, filename)
             else:
-                logging.warning(f"Unknown client message from {addr}: {message}")
+                logging.warning(f"Mensaje desconocido de {addr}: {message}")
         except (ValueError, IndexError) as e:
-            logging.warning(f"Invalid message format from {addr}: {data.decode()} - {e}")
+            logging.warning(f"Formato de mensaje inválido de {addr}: {data.decode()} - {e}")
