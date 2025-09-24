@@ -57,7 +57,7 @@ WINDOW_SIZE = 32
 BASE_TIMEOUT = 0.05
 MAX_TIMEOUT = 0.5
 
-MAX_RETRIES = 10
+MAX_RETRIES = 20
 
 class SelectiveRepeatProtocol:
     def __init__(self, args, sock: socket.socket):

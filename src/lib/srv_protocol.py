@@ -157,11 +157,19 @@ class ServerProtocol:
             success = protocol_handler.send_download(addr, filename, filesize)
             logging.debug(f"Resultado de send_download: {success}")
             if success:
-                logging.info(f"File '{filename}' sent successfully to {addr}")
+                logging.info(f"Archivo '{filename}' enviado exitosamente a {addr}")
             else:
-                logging.error(f"File transfer to {addr} failed.")
+                logging.error(f"Transferencia de archivo a {addr} fallida.")
+        except (ConnectionResetError, OSError, socket.error) as e:
+            logging.warning(f"Cliente {addr} desconectado durante transferencia: {e}")
         except Exception as e:
             logging.critical(f"Error fatal en descarga para {addr}: {e}")
+        finally:
+            try:
+                client_socket.close()
+                logging.debug(f"Socket temporal cerrado para {addr}")
+            except:
+                pass
 
     def get_protocol(self, protocol_name, args, socket):
         """Devuelve el manejador de protocolo correspondiente."""
