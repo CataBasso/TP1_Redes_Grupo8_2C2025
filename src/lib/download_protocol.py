@@ -54,9 +54,8 @@ class DownloadProtocol:
                         handler = StopAndWaitProtocol(self.args, self.socket)
                         return handler.receive_download(filesize)
                     elif protocol == "selective-repeat":
-                        #handler = SelectiveRepeatProtocol(self.args, self.socket)
-                        #return handler.receive_download(filesize)
-                        pass
+                        handler = SelectiveRepeatProtocol(self.args, self.socket)
+                        return handler.receive_download(filesize)
                 elif response == "ERROR:FileNotFound":
                     logging.error("CLIENTE: El archivo solicitado no existe en el servidor.")
                     if self.socket:
