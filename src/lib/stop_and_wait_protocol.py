@@ -217,11 +217,13 @@ class StopAndWaitProtocol:
                 
                 while not ack_received and retries < MAX_RETRIES:   
                     self.socket.sendto(packet, addr)
+                    logging.debug(f"Paquete enviado: {packet[:50]}... (total {len(packet)} bytes)")
                     send_time = time.monotonic()
                     
                     try:
                         self.socket.settimeout(current_timeout)
                         data, _ = self.socket.recvfrom(BUFFER_ACK)
+                        logging.debug(f"Recibido ACK: {data.decode().strip()}")
                         recv_time = time.monotonic()
                         
                         # RTT measurement
@@ -284,6 +286,7 @@ class StopAndWaitProtocol:
             while bytes_received < filesize:
                 try:
                     packet, server_addr = self.socket.recvfrom(PACKET_BUFFER)
+                    logging.debug(f"Recibido paquete de {server_addr}: {packet[:50]}... (total {len(packet)} bytes)")
                     packet_count += 1
                     
                     if b":" not in packet:
@@ -304,6 +307,7 @@ class StopAndWaitProtocol:
                         bytes_received += len(chunk)
                         last_correct_seq = seq_received
                         self.socket.sendto(f"ACK:{seq_received}".encode(), server_addr)
+                        logging.debug(f"ACK enviado para seq={seq_received}")
                         seq_expected = 1 - seq_expected
                         
                         if bytes_received >= filesize:
@@ -312,6 +316,7 @@ class StopAndWaitProtocol:
                     else:
                         # Paquete duplicado - reenviar último ACK correcto
                         if last_correct_seq != -1:
+                            logging.debug(f"Paquete duplicado seq={seq_received}, reenviando ACK para seq={last_correct_seq}")
                             self.socket.sendto(f"ACK:{last_correct_seq}".encode(), server_addr)
                             
                 except socket.timeout:

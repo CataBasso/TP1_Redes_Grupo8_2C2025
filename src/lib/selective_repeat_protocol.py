@@ -128,6 +128,7 @@ class SelectiveRepeatProtocol:
                             ack_seq = int(response.split(":")[1]) 
                             logging.debug(f"Procesando ACK para seq={ack_seq}")
                             if ack_seq in pkts:
+                                logging.debug(f"ACK válido para seq={ack_seq}, eliminando de pkts")
                                 del pkts[ack_seq]
                                 # ← DESLIZAR VENTANA (base avanza)
                                 while base_num not in pkts and base_num < next_seq_num:
@@ -161,9 +162,11 @@ class SelectiveRepeatProtocol:
                         data, _ = self.socket.recvfrom(64)
                     except:
                         break
-
+                
+                self.show_progress_bar(file_size, file_size)
+                logging.info(f"\n--- UPLOAD COMPLETADO ---")
                 elapsed_total = time.time() - start_time
-                logging.info(f"[UPLOAD COMPLETADO] {elapsed_total:.1f}s")
+                logging.info(f"Archivo enviado: {bytes_sent:,} bytes en {elapsed_total:.1f}s")
                 return True
 
         except Exception as e:
@@ -189,7 +192,8 @@ class SelectiveRepeatProtocol:
             while bytes_received < filesize:
                 try:
                     packet, client_addr = self.socket.recvfrom(RECEIVE_BUFFER)
-                    
+                    logging.debug(f"Recibido paquete de {client_addr}: {packet[:50]}... (total {len(packet)} bytes)")
+
                     # Validar formato del paquete
                     if b":" not in packet:
                         continue
@@ -203,6 +207,7 @@ class SelectiveRepeatProtocol:
                         # Solo procesar si no lo tenemos ya (evitar duplicados)
                         if seq_received not in received_pkts:
                             received_pkts[seq_received] = chunk
+                            logging.debug(f"Paquete procesado seq={seq_received}, bytes={len(chunk)}")
                         # ← ESCRIBIR PAQUETES CONSECUTIVOS (ventana deslizante)
                         while base_num in received_pkts:
                             chunk_to_write = received_pkts[base_num]
@@ -250,6 +255,7 @@ class SelectiveRepeatProtocol:
                             seq_received = int(seq_str)
                             ack_msg = f"ACK:{seq_received}".encode()
                             self.socket.sendto(ack_msg, client_addr)
+                            logging.debug(f"Resent ACK for final packet seq={seq_received}")
                         except (ValueError, UnicodeDecodeError):
                             continue
                             
@@ -260,10 +266,9 @@ class SelectiveRepeatProtocol:
 
             # ← ESTADÍSTICAS FINALES
             elapsed_total = time.time() - start_time
-            logging.info(f"\n--- UPLOAD COMPLETADO ---")
+            logging.info(f"\n--- RECEPCIÓN COMPLETADA ---")
             logging.info(f"Archivo: {filename} ({bytes_received:,} bytes)")
             logging.info(f"Tiempo: {elapsed_total:.1f}s")
-            logging.info(f"Velocidad: {bytes_received / elapsed_total / 1024:.1f} KB/s")
             return True, bytes_received
 
     def recieve_download(self, filesize):
