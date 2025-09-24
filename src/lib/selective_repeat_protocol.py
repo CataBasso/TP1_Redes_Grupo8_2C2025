@@ -66,16 +66,13 @@ class SelectiveRepeatProtocol:
 
     def show_progress_bar(self, current, total, bar_length=50):
         """Muestra una barra de progreso ASCII"""
-        progress = current / total
+        progress = min(current / total, 1.0)
         filled_length = int(bar_length * progress)
-        
         bar = '█' * filled_length + '-' * (bar_length - filled_length)
         percent = progress * 100
-
-        logging.info(f'\r[{bar}] {percent:.1f}% ({current}/{total})')
-
+        print(f'\r[{bar}] {percent:.1f}% ({current}/{total})', end='', flush=True)
         if progress >= 1.0:
-            logging.info('')  
+            print() 
 
     def send_upload(self, file_size):
         """Cliente: Envía archivo con ventana deslizante"""
