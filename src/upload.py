@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import time
@@ -6,9 +7,17 @@ from lib.parser import get_parser
 
 def main():
     args = get_parser("upload")
+    
+    level = logging.INFO
+    if args.verbose:
+        level = logging.DEBUG
+    elif args.quiet:
+        level = logging.ERROR
+   
+    logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
 
     if not args.host or not args.port or not args.src or not args.name:
-        print("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
+        logging.error("Usage: python3 upload.py -H <host> -p <port> -s <source> -n <name>")
         sys.exit(1)
 
     protocol = UploadProtocol(args)
@@ -18,11 +27,11 @@ def main():
 
     if upload:
         duration = end_time - start_time
-                
-        print(f"\n--- Transferencia Completa ---")
-        print(f"Tiempo total: {duration:.4f} segundos.")
+
+        logging.info(f"\n--- Transferencia Completa ---")
+        logging.info(f"Tiempo total: {duration:.4f} segundos.")
     else:
-        print("\nLa transferencia de archivos falló.")
+        logging.error("\nLa transferencia de archivos falló.")
         sys.exit(1)
 
 if __name__ == "__main__":

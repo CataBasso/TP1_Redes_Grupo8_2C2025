@@ -1,3 +1,4 @@
+import logging
 import socket
 import sys
 import threading
@@ -12,9 +13,17 @@ def handle_client(protocol: ServerProtocol, addr, data):
 
 def main():
     args = get_parser("server")
+    level = logging.INFO
+    if args.verbose:
+        level = logging.DEBUG
+    elif args.quiet:
+        level = logging.ERROR
+   
+    logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
     if not args.host or not args.port:
-        print("Usage: python3 start-server.py -H <host> -p <port>")
+        logging.error("Usage: python3 start-server.py -H <host> -p <port>")
         sys.exit(ERROR)
 
     # AF_INET for IPv4, SOCK_DGRAM for UDP
@@ -22,7 +31,7 @@ def main():
     skt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     skt.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     skt.bind((args.host, args.port))
-    print(f"SERVIDOR-MAIN Esuchando: {args.host}:{args.port}")
+    logging.info(f"SERVIDOR-MAIN Escuchando: {args.host}:{args.port}")
 
     protocol = ServerProtocol(args)
     protocol.set_main_socket(skt)
@@ -36,7 +45,7 @@ def main():
             # Validamos que sea un saludo de UPLOAD correcto
             if len(parts) == 4 and parts[0] == 'UPLOAD_CLIENT':
                 # Formato: "UPLOAD_CLIENT:protocol:filename:filesize"
-                print(f"SERVIDOR-MAIN: Saludo de UPLOAD recibido de {addr}")
+                logging.info(f"SERVIDOR-MAIN: Saludo de UPLOAD recibido de {addr}")
                 thread = threading.Thread(
                     target=protocol.handle_upload,
                     args=(addr, parts[1], parts[2], int(parts[3]))
@@ -45,18 +54,18 @@ def main():
             # Validamos que sea un saludo de DOWNLOAD correcto
             elif len(parts) == 3 and parts[0] == 'DOWNLOAD_CLIENT':
                 # Formato: "DOWNLOAD_CLIENT:protocol:filename"
-                print(f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}")
+                logging.info(f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}")
                 thread = threading.Thread(
                     target=protocol.handle_download,
                     args=(addr, parts[1], parts[2])
                 )
                 thread.start()
             else:
-                print(f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando.")
+                logging.warning(f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando.")
 
         except (UnicodeDecodeError, ValueError) as e:
-            print(f"SERVIDOR-MAIN: Paquete corrupto de {addr}:{e}. Ignorando.")
-    
+            logging.error(f"SERVIDOR-MAIN: Paquete corrupto de {addr}:{e}. Ignorando.")
+
     # except KeyboardInterrupt:
     #     print("Server shutting down.")
     # finally:

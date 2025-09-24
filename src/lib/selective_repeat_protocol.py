@@ -46,6 +46,7 @@
 import os
 import socket
 import time
+import logging
 
 BUFFER = 1024
 RECEIVE_BUFFER = BUFFER + 32
@@ -70,11 +71,11 @@ class SelectiveRepeatProtocol:
         
         bar = '█' * filled_length + '-' * (bar_length - filled_length)
         percent = progress * 100
-        
-        print(f'\r[{bar}] {percent:.1f}% ({current}/{total})', end='', flush=True)
-        
+
+        logging.info(f'\r[{bar}] {percent:.1f}% ({current}/{total})')
+
         if progress >= 1.0:
-            print() 
+            logging.info('')  
 
     def send_upload(self, file_size):
         """Cliente: Envía archivo con ventana deslizante"""
@@ -86,7 +87,7 @@ class SelectiveRepeatProtocol:
                 pkts = {}  # Diccionario: {seq_num: (packet, sent_time, retries)}
                 estimated_rtt = 0.001
 
-                print(f"CLIENTE: Enviando archivo ({file_size:,} bytes) con ventana {WINDOW_SIZE}")
+                logging.info(f"CLIENTE: Enviando archivo ({file_size:,} bytes) con ventana {WINDOW_SIZE}")
                 start_time = time.time()
 
                 while bytes_sent < file_size or pkts:
@@ -95,11 +96,10 @@ class SelectiveRepeatProtocol:
                         chunk = file.read(BUFFER)
                         if not chunk:
                             break
-
                         packet = f"{next_seq_num}:".encode() + chunk # Formato: "next_seq_num:datos"
                         pkts[next_seq_num] = (packet, time.time(), 0) #  guardar con timestamp
+                        logging.debug(f"Enviando paquete seq={next_seq_num}, bytes={len(packet)}")
                         self.socket.sendto(packet, (self.args.host, self.args.port))
-                        
                         next_seq_num += 1
                         bytes_sent += len(chunk)
 
@@ -110,13 +110,12 @@ class SelectiveRepeatProtocol:
 
                     for seq_num in list(pkts.keys()):
                         packet, sent_time, retries = pkts[seq_num]
-
                         if current_time - sent_time > current_timeout: # Si se envio hace mucho, retransmitir
                             if retries >= MAX_RETRIES:  # Si supera reintentos, abortar
-                                print(f"[ERROR]: Paquete {seq_num} falló después de {MAX_RETRIES} reintentos")
+                                logging.error(f"Paquete {seq_num} falló después de {MAX_RETRIES} reintentos")
                                 return False
-                            
-                            #print(f"[TIMEOUT]: Reenviando paquete {seq_num} (intento {new_retries}) ]")
+                            logging.debug(f"Timeout para seq={seq_num}, reenvío intento {retries + 1}")
+                            logging.warning(f"Reenviando paquete {seq_num} (intento {retries + 1})")
                             self.socket.sendto(packet, (self.args.host, self.args.port))
                             pkts[seq_num] = (packet, current_time, retries + 1)
 
@@ -127,30 +126,30 @@ class SelectiveRepeatProtocol:
                     try:
                         data, addr = self.socket.recvfrom(ACK_BUFFER)
                         response = data.decode().strip()
-                        
+                        logging.debug(f"Recibido ACK de {addr}: {response}")
                         if response.startswith("ACK:"):
                             ack_seq = int(response.split(":")[1]) 
-                            
+                            logging.debug(f"Procesando ACK para seq={ack_seq}")
                             if ack_seq in pkts:
                                 del pkts[ack_seq]
-                                
                                 # ← DESLIZAR VENTANA (base avanza)
                                 while base_num not in pkts and base_num < next_seq_num:
                                     base_num += 1
-                                
                                 # Mostrar progreso
                                 if base_num % 2 == 0:
                                     self.show_progress_bar(base_num * BUFFER, file_size)
-    
+                        else:
+                            logging.debug(f"ACK no reconocido: {response}")
                     except socket.timeout:
+                        logging.debug("Timeout esperando ACK")
                         pass
                     except (ValueError, UnicodeDecodeError):
-                        print("ACK malformado - ignorando")
+                        logging.warning("ACK malformado - ignorando")
                         continue
 
                     # FASE 4: Verificar si terminamos
                     if not pkts and bytes_sent >= file_size:
-                        print(f"[UPLOAD COMPLETADO] Archivo enviado completamente: {bytes_sent:,} bytes")
+                        logging.info(f"[UPLOAD COMPLETADO] Archivo enviado completamente: {bytes_sent:,} bytes")
                         break
                     
                     # ← CONTROL DE FLUJO: Pausa si hay muchos paquetes sin confirmar
@@ -167,11 +166,11 @@ class SelectiveRepeatProtocol:
                         break
 
                 elapsed_total = time.time() - start_time
-                print(f"[UPLOAD COMPLETADO] {elapsed_total:.1f}s")
+                logging.info(f"[UPLOAD COMPLETADO] {elapsed_total:.1f}s")
                 return True
 
         except Exception as e:
-            print(f"[ERROR]: {e}")
+            logging.error(f"[ERROR]: {e}")
             return False
 
     def receive_upload(self, addr, filename, filesize):
@@ -179,8 +178,8 @@ class SelectiveRepeatProtocol:
         storage_path = self.args.storage if self.args.storage else "storage"
         os.makedirs(storage_path, exist_ok=True)
         file_path = os.path.join(storage_path, filename)
-        
-        print(f"SERVIDOR: Recibiendo '{filename}' ({filesize:,} bytes)")
+
+        logging.info(f"SERVIDOR: Recibiendo '{filename}' ({filesize:,} bytes)")
 
         with open(file_path, "wb") as file:
             base_num = 0
@@ -203,25 +202,25 @@ class SelectiveRepeatProtocol:
 
                     # ← CASO 1: Paquete dentro de la ventana de recepción
                     if base_num <= seq_received < base_num + WINDOW_SIZE:
-                        
+                        logging.debug(f"Recibido paquete seq={seq_received}, bytes={len(chunk)} dentro de ventana [{base_num}, {base_num + WINDOW_SIZE - 1}]")
                         # Solo procesar si no lo tenemos ya (evitar duplicados)
                         if seq_received not in received_pkts:
                             received_pkts[seq_received] = chunk
-                        
                         # ← ESCRIBIR PAQUETES CONSECUTIVOS (ventana deslizante)
                         while base_num in received_pkts:
                             chunk_to_write = received_pkts[base_num]
                             file.write(chunk_to_write)
                             bytes_received += len(chunk_to_write)
+                            logging.debug(f"Escribiendo paquete seq={base_num}, bytes={len(chunk_to_write)}")
                             del received_pkts[base_num]
                             base_num += 1
-                        
                         # ← ENVIAR ACK (con rate limiting para evitar saturación)
                         ack_msg = f"ACK:{seq_received}".encode()
+                        logging.debug(f"Enviando ACK para seq={seq_received}")
                         self.socket.sendto(ack_msg, client_addr)
-                           
                     # ← CASO 2: Paquete anterior (duplicado)
                     elif seq_received < base_num:
+                        logging.debug(f"Recibido paquete duplicado seq={seq_received}, reenviando ACK")
                         ack_msg = f"ACK:{seq_received}".encode()
                         self.socket.sendto(ack_msg, client_addr)
  
@@ -231,14 +230,14 @@ class SelectiveRepeatProtocol:
 
                     # ← VERIFICAR SI TERMINAMOS
                     if bytes_received >= filesize:
-                        print(f"SERVIDOR: Archivo completo recibido: {bytes_received:,} bytes")
+                        logging.info(f"SERVIDOR: Archivo completo recibido: {bytes_received:,} bytes")
                         break
 
                 except socket.timeout:
                     return False, 0
                 
                 except Exception as e:
-                    print(f"SERVIDOR: Error inesperado: {e}")
+                    logging.error(f"SERVIDOR: Error inesperado: {e}")
                     continue
 
             # ← LIMPIAR ACKs FINALES para paquetes duplicados
@@ -264,10 +263,10 @@ class SelectiveRepeatProtocol:
 
             # ← ESTADÍSTICAS FINALES
             elapsed_total = time.time() - start_time
-            print(f"\n--- UPLOAD COMPLETADO ---")
-            print(f"Archivo: {filename} ({bytes_received:,} bytes)")
-            print(f"Tiempo: {elapsed_total:.1f}s")
-            
+            logging.info(f"\n--- UPLOAD COMPLETADO ---")
+            logging.info(f"Archivo: {filename} ({bytes_received:,} bytes)")
+            logging.info(f"Tiempo: {elapsed_total:.1f}s")
+            logging.info(f"Velocidad: {bytes_received / elapsed_total / 1024:.1f} KB/s")
             return True, bytes_received
 
     def recieve_download(self, filesize):
@@ -298,7 +297,7 @@ class SelectiveRepeatProtocol:
         else:
             file_path = self.args.dst
 
-        print(f"Saving file to: {file_path}")
+        logging.info(f"Saving file to: {file_path}")
 
         with open(file_path, "wb") as file:
             window_size = (
@@ -315,35 +314,36 @@ class SelectiveRepeatProtocol:
 
                     if base_num <= seq_received < base_num + window_size:
                         if seq_received not in pkts:
+                            logging.debug(f"Recibido paquete seq={seq_received}, bytes={len(chunk)} dentro de ventana [{base_num}, {base_num + window_size - 1}]")
                             file.write(chunk)
                             bytes_sent += len(chunk)
                             pkts[seq_received] = (packet, None)
-                            # print(f"Received and wrote packet {seq_received}.")
-
+                        logging.debug(f"Enviando ACK para seq={seq_received}")
                         self.socket.sendto(
                             f"ACK:{seq_received}".encode(), (self.args.host, self.args.port)
                         )
-                        # print(f"Sent ACK for packet {seq_received}.")
-
                         while base_num in pkts:
+                            logging.debug(f"Deslizando ventana, eliminando seq={base_num}")
                             del pkts[base_num]
                             base_num += 1
                     else:
-                        print(
+                        logging.warning(
                             f"Received out-of-window packet {seq_received}, expected window [{base_num}, {base_num + window_size - 1}]. Ignoring."
                         )
+                        logging.debug(f"Paquete fuera de ventana seq={seq_received}, ignorado")
                         if seq_received < base_num:
+                            logging.debug(f"Recibido paquete antiguo seq={seq_received}, reenviando ACK")
                             self.socket.sendto(
                                 f"ACK:{seq_received}".encode(), (self.args.host, self.args.port)
                             )
-                            print(f"Resent ACK for old packet {seq_received}.")
+                            logging.info(f"Resent ACK for old packet {seq_received}.")
 
                 except socket.timeout:
-                    print("Timeout waiting for packet. The server might have stopped.")
+                    logging.warning("Timeout waiting for packet. The server might have stopped.")
                     return False
                 except ValueError:
-                    print("Received a malformed packet. Ignoring.")
+                    logging.error("Received a malformed packet. Ignoring.")
                     return False
 
-        print(f"\nFile '{self.args.name}' downloaded successfully to '{self.args.dst}'.")
+        logging.info(f"\nFile '{self.args.name}' downloaded successfully to '{self.args.dst}'.")
         return True

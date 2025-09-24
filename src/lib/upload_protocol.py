@@ -1,5 +1,6 @@
 import socket
 import os
+import logging
 from lib.selective_repeat_protocol import SelectiveRepeatProtocol
 from lib.stop_and_wait_protocol import StopAndWaitProtocol
 
@@ -17,12 +18,12 @@ class UploadProtocol:
 
         protocol = self.args.protocol if self.args.protocol else "stop-and-wait"
         if not os.path.isfile(self.args.src):
-            print(f"Error: El archivo de origen {self.args.src} no existe.")
+            logging.error(f"Error: El archivo de origen {self.args.src} no existe.")
             return False
         file_size = os.path.getsize(self.args.src)
         
         handshake_msg = f"UPLOAD_CLIENT:{protocol}:{self.args.name}:{file_size}"
-        print(f"CLIENTE: Enviando saludo: {handshake_msg}")
+        logging.info(f"CLIENTE: Enviando saludo: {handshake_msg}")
 
         retries = 0
         current_timeout = TIMEOUT
@@ -35,7 +36,8 @@ class UploadProtocol:
 
                 if response.startswith("UPLOAD_OK:"):
                     new_port = int(response.split(":")[1])
-                    print(f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}.")
+
+                    logging.info(f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}.")
                     self.args.port = new_port
                     
                     if protocol == "stop-and-wait":
@@ -45,14 +47,15 @@ class UploadProtocol:
                         handler = SelectiveRepeatProtocol(self.args, self.socket)
                         return handler.send_upload(file_size)
                 else:
-                    print(f"CLIENTE: El servidor rechazó el saludo con: {response}")
+                    logging.error(f"CLIENTE: El servidor rechazó el saludo con: {response}")
                     return False
 
             except socket.timeout:
                 retries += 1
                 current_timeout *= 2
-                print(f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s")
-        
-        print("CLIENTE: No se pudo establecer conexión con el servidor.")
+
+                logging.warning(f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s")
+
+        logging.error("CLIENTE: No se pudo establecer conexión con el servidor.")
         return False
 
