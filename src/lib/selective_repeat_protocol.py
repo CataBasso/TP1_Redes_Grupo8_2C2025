@@ -108,8 +108,9 @@ class SelectiveRepeatProtocol(BaseProtocol):
 
         while bytes_sent < file_size or pkts:
             # FASE 1: Llenar ventana
-            self._fill_send_window(file, file_size, base_num, next_seq_num, bytes_sent, pkts, dest_addr)
-            next_seq_num, bytes_sent = self._update_send_counters(pkts, bytes_sent)
+            next_seq_num, bytes_sent = self._fill_send_window(
+                file, file_size, base_num, next_seq_num, bytes_sent, pkts, dest_addr
+            )
 
             # FASE 2: Manejar timeouts
             if not self._handle_timeouts(pkts, estimated_rtt, dest_addr):
@@ -211,15 +212,7 @@ class SelectiveRepeatProtocol(BaseProtocol):
             
             next_seq_num += 1
             bytes_sent += len(chunk)
-
-    def _update_send_counters(self, pkts, current_bytes_sent):
-        """Actualiza contadores de envío basado en paquetes pendientes"""
-        if not pkts:
-            return len(pkts), current_bytes_sent
-            
-        max_seq = max(pkts.keys())
-        bytes_sent = (max_seq + 1) * BUFFER
-        return max_seq + 1, bytes_sent
+        return next_seq_num, bytes_sent 
 
     def _handle_timeouts(self, pkts, estimated_rtt, dest_addr):
         """Maneja timeouts y retransmisiones"""
