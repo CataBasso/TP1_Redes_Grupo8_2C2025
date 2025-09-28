@@ -46,6 +46,8 @@ class BaseProtocol:
         """Parsea paquete en formato 'seq:data'"""
         if b":" not in packet:
             raise ValueError("Paquete sin formato ':'")
+        if b"FYN:0" in packet:
+            return int(-99), "fin"
         seq_str, chunk = packet.split(b":", 1)
         return int(seq_str), chunk
 
@@ -94,3 +96,14 @@ class BaseProtocol:
                 self.socket.recvfrom(RECV_BUFFER)
             except:
                 continue
+    def send_fyn(self,addr):
+        try:
+            logging.debug(f"Se envió FYN:0")
+            self.socket.sendto("FYN:0".encode(),addr)
+        except socket.timeout:
+            logging.debug(f"Se envió FYN")
+
+        
+
+    
+            

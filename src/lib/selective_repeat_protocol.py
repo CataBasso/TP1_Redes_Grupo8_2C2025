@@ -131,6 +131,8 @@ class SelectiveRepeatProtocol(BaseProtocol):
             if len(pkts) >= WINDOW_SIZE:
                 time.sleep(0.01)
 
+        self.send_fyn(dest_addr)
+
         # FASE 5: Limpiar ACKs finales
         self.cleanup_duplicates()
         
@@ -149,16 +151,20 @@ class SelectiveRepeatProtocol(BaseProtocol):
         
         self.socket.settimeout(60.0)
 
-        while bytes_received < filesize:
+        while True:
+            #bytes_received < filesize
             try:
                 packet, addr = self.socket.recvfrom(RECEIVE_BUFFER)
-                
                 # Parsear paquete
                 try:
                     seq_received, chunk = self.parse_packet(packet)
                 except ValueError:
                     continue
-
+                
+                if seq_received == -99 and chunk == "fin":
+                    logging.debug(f"Carga Completada: No se desean recibir ACKS")
+                    self.send_fyn(addr)
+                    break
                 # Procesar según posición en ventana
                 if self._is_in_receive_window(seq_received, base_num):
                     # CASO 1: Paquete en ventana
@@ -171,8 +177,7 @@ class SelectiveRepeatProtocol(BaseProtocol):
                     # CASO 2: Paquete duplicado
                     logging.debug(f"Paquete duplicado seq={seq_received}")
                     self.send_ack(seq_received, sender_addr or addr)
-                
-                # CASO 3: Paquete muy adelantado - ignorar
+
                 
                 # Mostrar progreso
                 current_time = time.time()
@@ -240,7 +245,7 @@ class SelectiveRepeatProtocol(BaseProtocol):
         try:
             data, _ = self.socket.recvfrom(ACK_BUFFER)
             response = data.decode().strip()
-            
+            logging.debug(f"TOTALES ACK ESPERADOS TODAVIA NO RECIBIDOS:{len(pkts)}")
             if response.startswith("ACK:"):
                 ack_seq = int(response.split(":")[1])
                 
