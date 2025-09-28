@@ -76,5 +76,5 @@ sudo mn --topo single,2 --link tc,loss=10
 # Adentro de mininet
 mininet> xterm h1 h2
 ```
-##### Al ejecutar esos comandos se abriran dos terminales de *xterm* h1 con ip 10.0.0.1 y h2 con ip 10.0.0.2, ya que son las default
+##### Al ejecutar esos comandos se abriran dos terminales de *xterm* h1 con ip 10.0.0.1 y h2 con ip 10.0.0.2, ya que son las default y las que deben utilizarse para permitir la comucion en la red creada por mininet.
 > Levantar el servidor en h1 y el client como "upload" o "download" en h2
