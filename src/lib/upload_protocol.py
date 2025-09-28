@@ -9,6 +9,7 @@ TIMEOUT = 2
 BUFFER = 1024
 MAX_RETRIES = 10
 
+
 class UploadProtocol:
     def __init__(self, args):
         self.args = args
@@ -22,7 +23,7 @@ class UploadProtocol:
             logging.error(f"Error: El archivo de origen {self.args.src} no existe.")
             return False
         file_size = os.path.getsize(self.args.src)
-        
+
         handshake_msg = f"UPLOAD_CLIENT:{protocol}:{self.args.name}:{file_size}"
         logging.info(f"CLIENTE: Enviando saludo: {handshake_msg}")
 
@@ -38,9 +39,11 @@ class UploadProtocol:
                 if response.startswith("UPLOAD_OK:"):
                     new_port = int(response.split(":")[1])
 
-                    logging.info(f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}.")
+                    logging.info(
+                        f"CLIENTE: Saludo aceptado. Servidor asignó puerto {new_port}."
+                    )
                     self.args.port = new_port
-                    
+
                     if protocol == "stop-and-wait":
                         handler = StopAndWaitProtocol(self.args, self.socket)
                         return handler.send_upload(file_size)
@@ -48,15 +51,24 @@ class UploadProtocol:
                         handler = SelectiveRepeatProtocol(self.args, self.socket)
                         return handler.send_upload(file_size)
                 else:
-                    logging.error(f"CLIENTE: El servidor rechazó el saludo con: {response}")
+                    logging.error(
+                        f"CLIENTE: El servidor rechazó el saludo con: {response}"
+                    )
                     return False
 
             except socket.timeout:
                 retries += 1
                 current_timeout *= 2
 
-                logging.warning(f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s")
+                logging.warning(
+                    f"CLIENTE: Timeout en saludo, reintentando... ({retries}/{MAX_RETRIES}) con timeout {current_timeout:.2f}s"
+                )
 
         logging.error("CLIENTE: No se pudo establecer conexión con el servidor.")
         return False
 
+    def close(self):
+        if self.socket:
+            self.socket.close()
+        self.socket = None
+        logging.info("CLIENTE: Socket cerrado.")

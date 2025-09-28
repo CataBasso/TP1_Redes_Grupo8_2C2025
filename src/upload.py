@@ -51,6 +51,7 @@ def main():
         end_time = time.monotonic()
 
         if success:
+            protocol.close()
             duration = end_time - start_time
             logging.info("\n--- Transferencia Completa ---")
             logging.info(f"Tiempo total: {duration:.4f} segundos.")

@@ -10,16 +10,27 @@ from lib.parser import get_parser
 BUFFER = 4064
 ERROR = 1
 
+
 def handle_client(protocol: ServerProtocol, addr, data):
     protocol.handle_client(addr, data)
+
 
 def check_quit_input():
     """Verifica si hay input disponible sin bloquear"""
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
         user_input = sys.stdin.readline().strip().lower()
-        if user_input == 'q':
+        if user_input == "q":
             return True
     return False
+
+
+def reap_dead_threads(threads):
+    """Elimina hilos muertos de la lista"""
+    for thread in threads[:]:
+        if not thread.is_alive():
+            thread.join()
+            threads.remove(thread)
+
 
 def main():
     args = get_parser("server")
@@ -28,8 +39,8 @@ def main():
         level = logging.DEBUG
     elif args.quiet:
         level = logging.ERROR
-   
-    logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s")
 
     if not args.host or not args.port:
         logging.error("Usage: python3 start-server.py -H <host> -p <port>")
@@ -42,12 +53,12 @@ def main():
     skt.bind((args.host, args.port))
     logging.info(f"SERVIDOR-MAIN Escuchando: {args.host}:{args.port}")
     print("Ingresa 'q' y Enter para cerrar el servidor.")
-    
+
     protocol = ServerProtocol(args)
     protocol.set_main_socket(skt)
 
     active_threads = []
-    
+
     try:
         while True:
             if check_quit_input():
@@ -55,56 +66,63 @@ def main():
                 break
 
             skt.settimeout(1.0)
-            
+
             try:
                 data, addr = skt.recvfrom(BUFFER)
                 message = data.decode()
-                parts = message.split(':', 4) 
+                parts = message.split(":", 4)
 
                 # Validamos que sea un saludo de UPLOAD correcto
-                if len(parts) == 4 and parts[0] == 'UPLOAD_CLIENT':
+                if len(parts) == 4 and parts[0] == "UPLOAD_CLIENT":
                     # Formato: "UPLOAD_CLIENT:protocol:filename:filesize"
                     logging.info(f"SERVIDOR-MAIN: Saludo de UPLOAD recibido de {addr}")
                     thread = threading.Thread(
                         target=protocol.handle_upload,
-                        args=(addr, parts[1], parts[2], int(parts[3]))
+                        args=(addr, parts[1], parts[2], int(parts[3])),
                     )
                     thread.start()
                     active_threads.append(thread)
                 # Validamos que sea un saludo de DOWNLOAD correcto
-                elif len(parts) == 3 and parts[0] == 'DOWNLOAD_CLIENT':
+                elif len(parts) == 3 and parts[0] == "DOWNLOAD_CLIENT":
                     # Formato: "DOWNLOAD_CLIENT:protocol:filename"
-                    logging.info(f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}")
+                    logging.info(
+                        f"SERVIDOR-MAIN: Saludo de DOWNLOAD recibido de {addr}"
+                    )
                     thread = threading.Thread(
-                        target=protocol.handle_download,
-                        args=(addr, parts[1], parts[2])
+                        target=protocol.handle_download, args=(addr, parts[1], parts[2])
                     )
                     thread.start()
                     active_threads.append(thread)
+                    reap_dead_threads(active_threads)
                 else:
-                    logging.warning(f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando.")
+                    logging.warning(
+                        f"SERVIDOR-MAIN: Paquete de saludo inválido de {addr}. Ignorando."
+                    )
 
             except socket.timeout:
                 active_threads = [t for t in active_threads if t.is_alive()]
                 continue
             except (UnicodeDecodeError, ValueError) as e:
-                logging.error(f"SERVIDOR-MAIN: Paquete corrupto de {addr}:{e}. Ignorando.")
-        
+                logging.error(
+                    f"SERVIDOR-MAIN: Paquete corrupto de {addr}:{e}. Ignorando."
+                )
+
     except KeyboardInterrupt:
         logging.info("Cerrando servidor por KeyboardInterrupt...")
-    
+
     logging.info("Cerrando conexiones...")
     skt.close()
     if active_threads:
         active_count = len([t for t in active_threads if t.is_alive()])
         if active_count > 0:
             logging.info(f"Esperando {active_count} transferencias activas...")
-            
+
             for thread in active_threads:
                 if thread.is_alive():
                     thread.join(timeout=3.0)
-    
+
     logging.info("Servidor cerrado correctamente.")
+
 
 if __name__ == "__main__":
     main()

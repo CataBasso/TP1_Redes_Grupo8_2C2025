@@ -50,7 +50,7 @@ class ServerProtocol:
     def __init__(self, args):
         self.args = args
         self.main_socket = None
-    
+
     def set_main_socket(self, socket):
         logging.debug(f"Seteando main_socket: {socket}")
         self.main_socket = socket
@@ -76,18 +76,30 @@ class ServerProtocol:
                 msg = protocol_data.decode()
                 logging.debug(f"Recibido mensaje de protocolo: '{msg}' de {addr}")
                 if msg in ["stop-and-wait", "selective-repeat"]:
-                    logging.info(f"SERVIDOR: Protocolo '{msg}' aceptado. Enviando ACK a {addr}.")
+                    logging.info(
+                        f"SERVIDOR: Protocolo '{msg}' aceptado. Enviando ACK a {addr}."
+                    )
                     client_socket.sendto(Messages.PROTOCOL_ACK, addr)
                     logging.debug(f"ACK de protocolo enviado a {addr}")
                     return msg
                 else:
-                    logging.warning(f"SERVIDOR: Mensaje de protocolo inválido de {addr} (contenido: '{msg}'). Ignorando.")
+                    logging.warning(
+                        f"SERVIDOR: Mensaje de protocolo inválido de {addr} (contenido: '{msg}'). Ignorando."
+                    )
             except socket.timeout:
                 retries += 1
-                logging.debug(f"Timeout esperando protocolo de {addr}, intento {retries}/{max_retries}")
-                logging.warning(f"Timeout esperando el protocolo de {addr}, reintentando {retries}/{max_retries}...")
-        logging.debug(f"Fallo al negociar protocolo con {addr} tras {max_retries} intentos")
-        raise socket.timeout("Fallo al negociar el protocolo: se agotaron los reintentos.")
+                logging.debug(
+                    f"Timeout esperando protocolo de {addr}, intento {retries}/{max_retries}"
+                )
+                logging.warning(
+                    f"Timeout esperando el protocolo de {addr}, reintentando {retries}/{max_retries}..."
+                )
+        logging.debug(
+            f"Fallo al negociar protocolo con {addr} tras {max_retries} intentos"
+        )
+        raise socket.timeout(
+            "Fallo al negociar el protocolo: se agotaron los reintentos."
+        )
 
     def _validate_file_info(self, file_info):
         """Valida y extrae información del archivo"""
@@ -103,7 +115,9 @@ class ServerProtocol:
             if filesize < 0:
                 logging.debug("Tamaño de archivo negativo")
                 raise ValueError("Invalid file size")
-            logging.debug(f"File info validado: filename={filename}, filesize={filesize}")
+            logging.debug(
+                f"File info validado: filename={filename}, filesize={filesize}"
+            )
             return filename, filesize
         except (ValueError, UnicodeDecodeError) as e:
             logging.debug(f"Error validando file_info: {e}")
@@ -111,7 +125,9 @@ class ServerProtocol:
 
     def handle_upload(self, addr, protocol, filename, filesize):
         try:
-            logging.debug(f"Iniciando handle_upload para {addr}, protocolo={protocol}, filename={filename}, filesize={filesize}")
+            logging.debug(
+                f"Iniciando handle_upload para {addr}, protocolo={protocol}, filename={filename}, filesize={filesize}"
+            )
             client_socket, client_port = self._setup_client_socket()
             logging.info(f"SERVIDOR: Hilo para {addr} en puerto temporal {client_port}")
 
@@ -124,6 +140,7 @@ class ServerProtocol:
             success, _ = protocol_handler.receive_upload(addr, filename, filesize)
             logging.debug(f"Resultado de receive_upload: {success}")
             if success:
+                client_socket.close()
                 logging.info(f"File '{filename}' received successfully from {addr}")
             else:
                 logging.error(f"File transfer from {addr} failed.")
@@ -132,25 +149,39 @@ class ServerProtocol:
 
     def handle_download(self, addr, protocol, filename):
         try:
-            logging.debug(f"Iniciando handle_download para {addr}, protocolo={protocol}, filename={filename}")
+            logging.debug(
+                f"Iniciando handle_download para {addr}, protocolo={protocol}, filename={filename}"
+            )
 
-            storage_path = self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
+            storage_path = (
+                self.args.storage if self.args.storage else FileInfo.DEFAULT_STORAGE
+            )
             file_path = os.path.join(storage_path, filename)
             logging.debug(f"Ruta de archivo a enviar: {file_path}")
             if not os.path.isfile(file_path):
-                logging.debug(f"Archivo '{filename}' no existe, enviando error a {addr}")
+                logging.debug(
+                    f"Archivo '{filename}' no existe, enviando error a {addr}"
+                )
                 self.main_socket.sendto(b"ERROR:FileNotFound", addr)
-                logging.warning(f"SERVIDOR: El archivo '{filename}' no existe. Enviando ERROR a {addr}.")
+                logging.warning(
+                    f"SERVIDOR: El archivo '{filename}' no existe. Enviando ERROR a {addr}."
+                )
                 return
             filesize = os.path.getsize(file_path)
-            logging.info(f"SERVIDOR: Archivo '{filename}' encontrado ({filesize} bytes).")
+            logging.info(
+                f"SERVIDOR: Archivo '{filename}' encontrado ({filesize} bytes)."
+            )
             client_socket, client_port = self._setup_client_socket()
             logging.info(f"SERVIDOR: Socket temporal creado en puerto {client_port}")
 
             response = f"DOWNLOAD_OK:{client_port}:{filesize}"
             logging.debug(f"Enviando handshake de download: {response} a {addr}")
+            
             self.main_socket.sendto(response.encode(), addr)
-            logging.info(f"SERVIDOR: Handshake enviado por socket principal: {response}")
+            
+            logging.info(
+                f"SERVIDOR: Handshake enviado por socket principal: {response}"
+            )
 
             protocol_handler = self.get_protocol(protocol, self.args, client_socket)
             logging.debug(f"Instanciado handler de protocolo: {protocol_handler}")
@@ -179,7 +210,9 @@ class ServerProtocol:
             Protocols.SELECTIVE_REPEAT: SelectiveRepeatProtocol,
         }
         if protocol_name in protocols:
-            logging.debug(f"Protocolo encontrado: {protocol_name}, instanciando handler")
+            logging.debug(
+                f"Protocolo encontrado: {protocol_name}, instanciando handler"
+            )
             return protocols[protocol_name](args, socket)
         logging.debug(f"Protocolo no soportado: {protocol_name}")
         raise ValueError(f"Protocol {protocol_name} not supported")
@@ -208,4 +241,6 @@ class ServerProtocol:
             else:
                 logging.warning(f"Mensaje desconocido de {addr}: {message}")
         except (ValueError, IndexError) as e:
-            logging.warning(f"Formato de mensaje inválido de {addr}: {data.decode()} - {e}")
+            logging.warning(
+                f"Formato de mensaje inválido de {addr}: {data.decode()} - {e}"
+            )
