@@ -8,7 +8,7 @@ from .base_protocol import BaseProtocol
 '''TIMEOUTS'''
 CLIENT_TIMEOUT_START = 0.02
 CLIENT_TIMEOUT_MAX = 0.5
-SERVER_TIMEOUT = 120.0
+SERVER_TIMEOUT = 30.0
 '''BUFFER SIZES'''
 BUFFER = 800
 BUFFER_ACK = 64
@@ -133,23 +133,28 @@ class StopAndWaitProtocol(BaseProtocol):
         retries = 0
         
         while retries < MAX_RETRIES:
+            # FASE 1: ENVIO
             self.socket.sendto(packet, dest_addr)
             send_time = time.monotonic()
             
             try:
+                # FASE 2: ESPERA ACK
                 self.socket.settimeout(current_timeout)
                 data, _ = self.socket.recvfrom(BUFFER_ACK)
                 recv_time = time.monotonic()
                 
+                # FASE 3: MEDICION DE RTT Y ACTUALIZACION TIMEOUT
                 sample_rtt = recv_time - send_time
                 estimated_rtt = self.update_rtt(estimated_rtt, sample_rtt)
                 current_timeout = self.calculate_timeout(estimated_rtt, CLIENT_TIMEOUT_START, CLIENT_TIMEOUT_MAX)
                 
+                # FASE 4: VERIFICACION DE ACK
                 response = data.decode()
                 if self.is_expected_ack(response, seq_num):
                     return True
                     
             except socket.timeout:
+                # FASE 5: RETRANSMISION
                 retries += 1
                 current_timeout = min(current_timeout * 1.3, CLIENT_TIMEOUT_MAX)
                 

@@ -1,47 +1,3 @@
-#Selective Repeat es un protocolo de ventana deslizante que permite:
-
-# - Múltiples paquetes en vuelo (vs Stop-and-Wait que es 1 por vez)
-# - ACKs individuales para cada paquete
-# - Retransmisión selectiva solo de paquetes perdidos (no todos)
-# ------------------ LADO CLIENTE --------------------- send_upload()
-# --- FASE 1 --- Llenar ventana
-# Envía:  [0] [1] [2] [3] [4] [5] [6] [7] ... hasta WINDOW_SIZE
-# Estado: base=0, next=32, pkts={0,1,2,...,31}
-
-# --- FASE 2 --- Manejar timeouts y retransmisiones
-# Ventana: [0] [1] [2] [3] [4] [5] [6] [7]
-# Timeout:  ✓   ✗   ✓   ✓   ✗   ✓   ✓   ✓
-# Reenvía:       1            4              Solo paquetes 1 y 4
-
-# --- FASE 3 --- Procesar ACKs
-# Antes:  base=0, pkts={0,1,2,3,4,5,6,7}
-# ACK:3   base=0, pkts={0,1,2,4,5,6,7}     # Elimina 3
-# ACK:0   base=0, pkts={1,2,4,5,6,7}       # Elimina 0
-#         base=1, pkts={2,4,5,6,7}          # Avanza base (0 ya no existe)
-#         base=2, pkts={4,5,6,7}            # Avanza base (1 ya no existe)  
-#         base=4, pkts={4,5,6,7}            # Para (2 no confirmado)
-# Ahora puede enviar paquetes [32] [33] [34] [35]
-# porque la ventana se desplazó: [4,5,6,7,32,33,34,35]
-
-# --- FASE 4 --- Verificar si terminamos
-# --- FASE 5 --- Limpiar ACKs duplicados al final
-
-# ------------------ LADO SERVIDOR --------------------- receive_upload()
-# --- CASO 1 --- Recibir paquetes y manejar ventana
-# Estado inicial: base=0, received_pkts={}
-# Recibe paquete 2: received_pkts={2: chunk2}  # No escribe (falta 0,1)
-# Recibe paquete 0: received_pkts={0: chunk0, 2: chunk2}
-#                   Escribe chunk0, base=1      # Puede escribir 0
-#                   received_pkts={2: chunk2}   # Queda 2 esperando
-# Recibe paquete 1: received_pkts={1: chunk1, 2: chunk2}
-#                   Escribe chunk1, base=2      # Puede escribir 1
-#                   Escribe chunk2, base=3      # También puede escribir 2!
-#                   received_pkts={}            # Buffer vacío
-# --- CASO 2 --- Paquete duplicado (ya procesado)
-# Si recibo un paquete que ya procese, reenvio ACK por si se perdio
-# --- CASO 3 --- Paquete fuera de ventana (muy adelantado)
-# Si recibo un paquete fuera de la ventana que estoy esperando, lo ignoro (NO envio ACK)
-
 import socket
 import time
 import logging
@@ -152,7 +108,6 @@ class SelectiveRepeatProtocol(BaseProtocol):
         self.socket.settimeout(60.0)
 
         while True:
-            #bytes_received < filesize
             try:
                 packet, addr = self.socket.recvfrom(RECEIVE_BUFFER)
                 # Parsear paquete
@@ -178,7 +133,8 @@ class SelectiveRepeatProtocol(BaseProtocol):
                     logging.debug(f"Paquete duplicado seq={seq_received}")
                     self.send_ack(seq_received, sender_addr or addr)
 
-                
+                # CASO 3: Paquete fuera de ventana (muy adelantado) - Ignorar
+
                 # Mostrar progreso
                 current_time = time.time()
                 if current_time - progress_time > 1:

@@ -68,6 +68,9 @@ def main():
     except Exception as e:
         logging.exception(f"Error inesperado: {e}")
         sys.exit(ERROR)
+    finally:
+        if protocol:
+            protocol.close()
 
 
 if __name__ == "__main__":
