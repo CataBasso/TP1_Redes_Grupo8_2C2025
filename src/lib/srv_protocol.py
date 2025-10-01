@@ -64,65 +64,6 @@ class ServerProtocol:
         logging.debug(f"Socket temporal creado en puerto {client_port}")
         return client_socket, client_port
 
-    def _negotiate_protocol(self, client_socket, addr):
-        """Negocia el protocolo con el cliente"""
-        retries = 0
-        max_retries = 10
-        protocol = None
-        logging.debug(f"Negociando protocolo con {addr}")
-        while retries < max_retries:
-            try:
-                protocol_data, _ = client_socket.recvfrom(NetworkConfig.BUFFER_SIZE)
-                msg = protocol_data.decode()
-                logging.debug(f"Recibido mensaje de protocolo: '{msg}' de {addr}")
-                if msg in ["stop-and-wait", "selective-repeat"]:
-                    logging.info(
-                        f"SERVIDOR: Protocolo '{msg}' aceptado. Enviando ACK a {addr}."
-                    )
-                    client_socket.sendto(Messages.PROTOCOL_ACK, addr)
-                    logging.debug(f"ACK de protocolo enviado a {addr}")
-                    return msg
-                else:
-                    logging.warning(
-                        f"SERVIDOR: Mensaje de protocolo inválido de {addr} (contenido: '{msg}'). Ignorando."
-                    )
-            except socket.timeout:
-                retries += 1
-                logging.debug(
-                    f"Timeout esperando protocolo de {addr}, intento {retries}/{max_retries}"
-                )
-                logging.warning(
-                    f"Timeout esperando el protocolo de {addr}, reintentando {retries}/{max_retries}..."
-                )
-        logging.debug(
-            f"Fallo al negociar protocolo con {addr} tras {max_retries} intentos"
-        )
-        raise socket.timeout(
-            "Fallo al negociar el protocolo: se agotaron los reintentos."
-        )
-
-    def _validate_file_info(self, file_info):
-        """Valida y extrae información del archivo"""
-        logging.debug(f"Validando file_info: {file_info}")
-        try:
-            parts = file_info.decode().split(FileInfo.SEPARATOR)
-            logging.debug(f"Partes extraídas: {parts}")
-            if len(parts) != 2:
-                logging.debug("Formato inválido de file_info")
-                raise ValueError("Invalid file info format")
-            filename, filesize_str = parts
-            filesize = int(filesize_str)
-            if filesize < 0:
-                logging.debug("Tamaño de archivo negativo")
-                raise ValueError("Invalid file size")
-            logging.debug(
-                f"File info validado: filename={filename}, filesize={filesize}"
-            )
-            return filename, filesize
-        except (ValueError, UnicodeDecodeError) as e:
-            logging.debug(f"Error validando file_info: {e}")
-            raise ValueError(f"Invalid file info: {e}")
-
     def handle_upload(self, addr, protocol, filename, filesize):
         try:
             logging.debug(
